@@ -29,7 +29,18 @@ module Crystal::Playground
 
       prelude = %(
         require "compiler/crystal/tools/playground/agent"
-        $p = Crystal::Playground::Agent.new("ws://localhost:#{@port}/agent/#{@session_key}/#{tag}", #{tag})
+
+        class Crystal::Playground::Agent
+          @@instance = Crystal::Playground::Agent.new("ws://localhost:#{@port}/agent/#{@session_key}/#{tag}", #{tag})
+
+          def self.instance
+            @@instance
+          end
+        end
+
+        def _p
+          Crystal::Playground::Agent.instance
+        end
         )
 
       sources = [
@@ -56,11 +67,11 @@ module Crystal::Playground
         end
 
         @logger.error "Instrumention bug found (session=#{@session_key}, tag=#{tag})."
-        send_with_json_builder do |json, io|
+        send_with_json_builder do |json|
           json.field "type", "bug"
           json.field "tag", tag
           json.field "exception" do
-            append_exception io, ex
+            append_exception json, ex
           end
         end
 
@@ -69,7 +80,7 @@ module Crystal::Playground
 
       execute tag, output_filename
 
-      send_with_json_builder do |json, io|
+      send_with_json_builder do |json|
         json.field "type", "run"
         json.field "tag", tag
         json.field "filename", output_filename
@@ -89,28 +100,28 @@ module Crystal::Playground
     end
 
     def send_with_json_builder
-      send(String.build do |io|
-        io.json_object do |json|
-          yield json, io
+      send(JSON.build do |json|
+        json.object do
+          yield json
         end
       end)
     end
 
     def send_exception(ex, tag)
-      send_with_json_builder do |json, io|
+      send_with_json_builder do |json|
         json.field "type", "exception"
         json.field "tag", tag
         json.field "exception" do
-          append_exception io, ex
+          append_exception json, ex
         end
       end
     end
 
-    def append_exception(io, ex)
-      io.json_object do |json|
+    def append_exception(json, ex)
+      json.object do
         json.field "message", ex.to_s
         if ex.is_a?(Crystal::Exception)
-          json.field "payload", ex
+          json.field "payload", ex.to_s
         end
       end
     end
@@ -140,7 +151,7 @@ module Crystal::Playground
         @logger.info "Code execution ended (session=#{@session_key}, tag=#{tag}, filename=#{output_filename})."
         exit_status = status.normal_exit? ? status.exit_code : status.exit_signal.value
 
-        send_with_json_builder do |json, io|
+        send_with_json_builder do |json|
           json.field "type", "exit"
           json.field "tag", tag
           json.field "status", exit_status
@@ -177,9 +188,23 @@ module Crystal::Playground
   end
 
   abstract class PlaygroundPage
+    @resources = [] of Resource
+
     def render_with_layout(io, &block)
       ECR.embed "#{__DIR__}/views/layout.html.ecr", io
     end
+
+    protected def add_resource(kind, src)
+      @resources << Resource.new(kind, src)
+    end
+
+    def each_resource(kind)
+      @resources.each do |res|
+        yield res if res.kind == kind
+      end
+    end
+
+    record Resource, kind : Symbol, src : String
   end
 
   class FileContentPage < PlaygroundPage
@@ -200,13 +225,19 @@ module Crystal::Playground
         end
         content
       rescue e
-        e.message
+        e.message || "Error: generating content for #{@filename}"
       end
     end
 
     def to_s(io)
-      render_with_layout(io) do
-        content
+      body = content
+      # avoid the layout if the file is a full html
+      if File.extname(@filename).starts_with?(".htm") && content.starts_with?("<!")
+        io << body
+      else
+        render_with_layout(io) do
+          body
+        end
       end
     end
 
@@ -260,7 +291,9 @@ module Crystal::Playground
     end
   end
 
-  class PageHandler < HTTP::Handler
+  class PageHandler
+    include HTTP::Handler
+
     @page : PlaygroundPage
 
     def initialize(@path : String, filename : String)
@@ -281,19 +314,50 @@ module Crystal::Playground
     end
   end
 
-  class WorkbookHandler < HTTP::Handler
+  class WorkbookHandler
+    include HTTP::Handler
+
     def call(context)
-      case {context.request.method, context.request.resource}
+      case {context.request.method, context.request.path}
       when {"GET", /\/workbook\/playground\/(.*)/}
         files = Dir["playground/#{$1}.{md,html,cr}"]
         if files.size > 0
           context.response.headers["Content-Type"] = "text/html"
-          context.response << FileContentPage.new(files[0])
+          page = FileContentPage.new(files[0])
+          load_resources page
+          context.response << page
           return
         end
       end
 
       call_next(context)
+    end
+
+    def load_resources(page : PlaygroundPage)
+      Dir["playground/resources/*.css"].each do |file|
+        page.add_resource :css, "/workbook/#{file}"
+      end
+      Dir["playground/resources/*.js"].each do |file|
+        page.add_resource :js, "/workbook/#{file}"
+      end
+    end
+  end
+
+  class PathStaticFileHandler < HTTP::StaticFileHandler
+    def initialize(@path : String, public_dir : String, fallthrough = true)
+      super(public_dir, fallthrough)
+    end
+
+    def call(context)
+      if context.request.path.try &.starts_with?(@path)
+        super
+      else
+        call_next(context)
+      end
+    end
+
+    def request_path(path : String) : String
+      path[@path.size..-1]
     end
   end
 
@@ -311,7 +375,9 @@ module Crystal::Playground
     end
   end
 
-  class EnvironmentHandler < HTTP::Handler
+  class EnvironmentHandler
+    include HTTP::Handler
+
     def initialize(@server : Playground::Server)
     end
 
@@ -352,7 +418,6 @@ module Crystal::Playground
   end
 
   class Server
-    $sockets = [] of HTTP::WebSocket
     @sessions = {} of Int32 => Session
     @sessions_key = 0
 
@@ -391,20 +456,26 @@ module Crystal::Playground
         end
       end
 
-      client_ws = PathWebSocketHandler.new "/client" do |ws|
-        @sessions_key += 1
-        @sessions[@sessions_key] = session = Session.new(ws, @sessions_key, @port, @logger)
-        @logger.info "/client WebSocket connected as session=#{@sessions_key}"
+      client_ws = PathWebSocketHandler.new "/client" do |ws, context|
+        origin = context.request.headers["Origin"]
+        if !accept_request?(origin)
+          @logger.warn "Invalid Request Origin: #{origin}"
+          ws.close "Invalid Request Origin"
+        else
+          @sessions_key += 1
+          @sessions[@sessions_key] = session = Session.new(ws, @sessions_key, @port, @logger)
+          @logger.info "/client WebSocket connected as session=#{@sessions_key}"
 
-        ws.on_message do |message|
-          json = JSON.parse(message)
-          case json["type"].as_s
-          when "run"
-            source = json["source"].as_s
-            tag = json["tag"].as_i
-            session.run source, tag
-          when "stop"
-            session.stop
+          ws.on_message do |message|
+            json = JSON.parse(message)
+            case json["type"].as_s
+            when "run"
+              source = json["source"].as_s
+              tag = json["tag"].as_i
+              session.run source, tag
+            when "stop"
+              session.stop
+            end
           end
         end
       end
@@ -416,6 +487,7 @@ module Crystal::Playground
         PageHandler.new("/about", File.join(views_dir, "_about.html")),
         PageHandler.new("/settings", File.join(views_dir, "_settings.html")),
         PageHandler.new("/workbook", WorkbookIndexPage.new),
+        PathStaticFileHandler.new("/workbook/playground/resources", "playground/resources", false),
         WorkbookHandler.new,
         EnvironmentHandler.new(self),
         HTTP::StaticFileHandler.new(public_dir),
@@ -430,11 +502,25 @@ module Crystal::Playground
       end
 
       puts "Listening on http://#{host}:#{@port}"
+      if host == "0.0.0.0"
+        puts "WARNING running playground with 0.0.0.0 is unsecure."
+      end
 
       begin
         server.listen
       rescue ex
         raise ToolException.new(ex.message)
+      end
+    end
+
+    private def accept_request?(origin)
+      case @host
+      when nil
+        origin == "http://127.0.0.1:#{@port}" || origin == "http://localhost:#{@port}"
+      when "0.0.0.0"
+        true
+      else
+        origin == "http://#{@host}:#{@port}"
       end
     end
   end

@@ -1,3 +1,192 @@
+## Next
+
+* **(breaking change)** A type that wants to convert itself to JSON now must override `to_json(builder : JSON::Builder)` instead of `to_json(io : IO)`. The same is true for custom JSON converters. If you are using `JSON.mapping` then your code will continue to work without changes.
+* **(breaking change)** Defining a `finalize` method on a struct now gives a compile error
+* **(breaking change)** `each` methods now return `Nil`
+* **(breaking change)** `IO#skip(bytes)` will now raise if there aren't at least the given amount of bytes in the `IO` (previously it would work well if there were less bytes, and it would hang if there were more)
+* **(breaking change)** `MemoryIO` was removed (use `IO::Memory` instead)
+* **(breaking change)** `Number#step` now requires named arguments, `to` and `by`, to avoid argument order confusion
+* **(breaking change)** `YAML::Emitter` was renamed to `YAML::Builder`, and some of its methods were also renamed
+* **(breaking change)** `XML::Node#[]` now always returns a `String` (previously it could also return `Nil`, which was incorrect)
+* **(breaking change)** `XML::Node#content` now returns an empty `String` when no content is available
+* `HTTP::Client` now automatically reconnects on a dropped keep-alive connection
+* `with ... yield` now works well with `method_missing`
+* Class variables can now be used in generic types (all generic instances share the same variable, and subclasses get their own copy, as usual)
+* Added support for LLVM 4 (thanks @ysbaddaden)
+* Added `Enum.each` and `Enum#each` (thanks @ysbaddaden)
+* Added `Hash#compact` and `Hash#compact!` (thanks @MakeNowJust)
+* Added `IO#read_string(bytesize)`
+* Added `IO#skip_to_end`
+* Added `Iterator#flat_map` (thanks @MakeNowJust)
+* Added `JSON.build` and `JSON::Builder`
+* Added `NamedTuple#has_key?(String)` (thanks @Sija)
+* Added `p(NamedTuple)` (thanks @splattael)
+* Added `Regex::MatchData#==` (thanks @MakeNowJust)
+* Added `String#sub(Regex, NamedTuple)` (thanks @maiha)
+* Added `XML.build` and `XML::Builder`
+* Lots of improvements and applied consistencies to doc comments (thanks @Sija and @maiha)
+* [Some bug fixes](https://github.com/crystal-lang/crystal/issues?q=is%3Aclosed+milestone%3A0.20.4)
+
+## 0.20.3 (23-12-2016)
+
+* **(breaking change)** `IO#gets`, `IO#each_line`, `String#lines`, `String#each_line`, etc. now chomp lines by default. You can pass `chomp: false` to prevent automatic chomping. Note that `chomp` is `true` by default for argless `IO#gets` (read line) but `false` if args are given.
+* **(breaking change)** `HTTP::Handler` is now a module instead of a class (thanks @andrewhamon)
+* **(breaking change)** Free variables now must be specified with `forall`, a single uppercase letter will not work anymore
+* **(breaking change)** The `libs` directory is no longer in the default CRYSTAL_PATH, use `lib` (running `crystal deps` should fix this)
+* Optimized compile times, specially on linux
+* `private` can now be used with macros inside types (thanks @MakeNowJust)
+* CLI: the `-s`/`--stats` option now also shows execution time (thanks @MakeNowJust)
+* CLI: added `-t`/`--time` to show execution time (thanks @MakeNowJust)
+* `Socket` now allows any family/type/protocol association, [and many other improvements](https://github.com/crystal-lang/crystal/pull/3750) (thanks @ysbaddaden)
+* YAML: an `IO` can now be passed to `from_yaml` (thanks @MakeNowJust)
+* Added `class_getter`, `class_setter`, `class_property`, etc. (thanks @Sija)
+* Added `String#lchomp` (thanks @Sija)
+* Added `IO#read_fully?`
+* Added `Iterator#flatten` (thanks @MakeNowJust)
+* Added `HTTP::WebSocket#ping`, `pong`, `on_ping`, `on_pong`, and now a ping message is automatically replied with a pong message (thanks @Sija)
+* Added `File#empty?` and `Dir#empty?` (thanks @dylandrop)
+* Added `Time::Span#/(Time::Span)` (thanks @RX14)
+* Added `String#split` versions that accept a block (thanks @splattael)
+* Added `URI#normalize` and `normalize!` (thanks @taylorfinnell)
+* Added `reuse` optional argument to many `Array`, `Enumerable` and `Iterable` methods that allow you to reuse the yielded/return array for better performance and less memory footprint
+* The `:debug` flag is now present when compiled with `--debug`, useful for doing `flag?(:debug)` in macros (thanks @luislavena)
+* [Many bug fixes and performance improvements](https://github.com/crystal-lang/crystal/issues?q=is%3Aclosed+milestone%3A0.20.3)
+
+## 0.20.1 (05-12-2016)
+
+* **(breaking change)** `Set#merge` as renamed to `Set#merge!`
+* **(breaking change)** `Slice.new(size)` no longer works with non primitive integers and floats
+* **(breaking change)** The macro method `argify` was renamed to `splat`
+* Added pretty printing. The methods `p` and `pp` now use it. To get the old behaviour use `puts obj.inspect`
+* Added `ArrayLiteral#[]=`, `TypeNode#constant`, `TypeNode#overrides?` and `HashLiteral#double_splat` in macros
+* Added a `finished` macro hook that runs at the end of the program
+* Added support for declaring the type of a local variable
+* Added `Slice.empty`
+* Flags enums now have a `none?` method
+* `IO::ByteFormat` has now methods to encode/decode to/from a `Slice`
+* Spec: the line number passed to run a specific `it` block can now be inside any line of that block
+* The `CallConvention` attribute can now also be applied to a `lib` declaration, and all `fun`s inside it will inherit it
+* The `method_missing` hook can now define a method, useful for specifying block arguments
+* Support double splat in macros (`{{**...}}`)
+* [Some bug fixes](https://github.com/crystal-lang/crystal/issues?q=is%3Aclosed+milestone%3A0.20.1)
+
+## 0.20.0 (22-11-2016)
+
+* **(breaking change)** Removed `ifdef` from the language
+* **(breaking change)** Removed `PointerIO`
+* **(breaking change)** The `body` property of `HTTP::Request` is now an `IO?` (previously it was `String`). Use `request.body.try(&.gets_to_end)`  if you need the entire body as a String.
+* **(breaking change)** `MemoryIO` has been renamed to `IO::Memory`. The old name can still be used but will produce a compile-time warning. `MemoryIO` will be removed immediately after 0.20.0.
+* **(breaking change)** `Char#digit?` was split into `Char#ascii_number?` and `Char#number?`. The old name is still available and will produce a compile-time warning, but will be removed immediately after 0.20.0.
+* **(breaking change)** `Char#alpha?` was split into `Char#ascii_letter?` and `Char#letter?`. The old name is still available and will produce a compile-time warning, but will be removed immediately after 0.20.0.
+* **(breaking change)** The `Iterable` module is now generic
+* Many `String` and `Char` methods are now unicode-aware, for example `String#downcase`, `String#upcase`, `Char#downcase`, `Char#upcase`, `Char#whitespace?`, etc.
+* Added support for HTTP client and server streaming.
+* Added support for ARM (thanks @ysbaddaden)
+* Added support for AArch64 (thanks @ysbaddaden)
+* Added support for LLVM 3.9 (thanks @ysbaddaden)
+* Added `__END_LINE__` magic constant in method default arguments: will be the last line of a call (if the call has a block, it will be the last line of that block)
+* Added `@def` inside macros that takes the value of the current method
+* API docs have a nicer style now, and notes like TODO and DEPRECATED are better highlighted (thanks @samueleaton)
+* Slight improvement to debugging support (thanks @ggiraldez)
+* Line numbers in backtraces (linux only for now) (thanks @ysbaddaden)
+* Added iteration times to `Benchmark.ips` (thanks @RX14)
+* Allow `HTTP::Client` block initializer to be used when passing an URI (thanks @philnash)
+* `JSON.mapping` and `YAML.mapping` getter/setter generation can now be controlled (thanks @zatherz)
+* `Time` is now serializable to JSON and YAML using ISO 8601 date-time format
+* Added `IO::MultiWriter` (thanks @RX14)
+* Added `String#index(Regex)` and `String#rindex(Regex)` (thanks @zatherz)
+* Added `String#partition` and `String#rpartition` (thanks @johnjansen)
+* Added `FileUtils.cd`, `FileUtils.mkdir`, `FileUtils.mkdir_p`, `FileUtils.mv`, `FileUtils.pwd`, `FileUtils.rm`, `FileUtils.rm_r`, `FileUtils.rmdir` (thanks @ghivert)
+* Added `JSON::Builder#raw_field` (thanks @kostya)
+* Added `Enumerable#chunks` and `Iterator#chunk` (thanks @kostya)
+* Added `Iterator#with_index`
+* Several enhancements to the Random module: now works for any integer type and avoids overflows (thanks @BlaXpirit)
+* Optimized `Array#sort` by using introsort (thanks @c910335)
+* [Several bug fixes](https://github.com/crystal-lang/crystal/issues?q=is%3Aclosed+milestone%3A0.20.0)
+
+## 0.19.4  (07-10-2016)
+
+* Added support for OpenBSD (thanks @wmoxam and @ysbaddaden)
+* More iconv fixes for FreeBSD (thanks @ysbaddaden)
+* Changed how `require` works for the upcoming `shards` release (this is backwards compatible). See https://github.com/crystal-lang/crystal/pull/2788
+* Added `Atomic` and exposed all LLVM atomic instructions to Crystal (needed to implemented multiple-thread support)
+* Added `Process.executable_path` (thanks @kostya, @whereami and @ysbaddaden)
+* Added `HTML.unescape` (thanks @dukex)
+* Added `Char#+(Int)` and `Char#-(Int)`
+* [A few bug fixes](https://github.com/crystal-lang/crystal/issues?q=is%3Aclosed+milestone%3A0.19.4)
+
+## 0.19.3  (30-09-2016)
+
+* `crystal eval` now accepts some flags like `--stats`, `--release` and `--help`
+* Added `File.chown` and `File.chmod` (thanks @ysbaddaden)
+* Added `Time::Span.zero` (useful for doing `sum`) (thanks @RX14)
+* Added docs to `OAuth` and `OAuth2`
+* [Several bug fixes](https://github.com/crystal-lang/crystal/issues?q=is%3Aclosed+milestone%3A0.19.3)
+
+## 0.19.2  (16-09-2016)
+
+* Generic type variables no longer need to be single-letter names (for example `class Gen(Foo)` is now possible)
+* Added syntax to denote free variables: `def foo(x : T) forall T`. The old rule of single-letter name still applies but will be removed in the future.
+* Removed the restriction that top-level types and constants can't have single-letter names
+* Added `@[Extern]` attribute to mark regular Crystal structs as being able to be used in C bindings
+* Faster `Char#to_s` when it's ASCII: this improves the performance of JSON and CSV parsing
+* `crystal spec`: allow passing `--release` and other options
+* `crystal spec`: allow running all specs in a given directory
+* `crystal playground`: support custom workbook resources (thanks @bcardiff)
+* `crystal playground`: standard output now understands ANSI colors (thanks @bcardiff)
+* Added many more macro methods to traverse AST nodes (thanks @BlaXpirit)
+* Error messages no longer include a type trace by default, pass `--error-trace` to show the full trace (the trace is often useless and makes it harder to understand error messages)
+* [Several bug fixes](https://github.com/crystal-lang/crystal/issues?q=is%3Aclosed+milestone%3A0.19.2)
+
+## 0.19.1  (09-09-2016)
+
+* Types (class, module, etc.) can now be marked as `private`.
+* Added `WeakRef`  (thanks @bcardiff)
+* [Several bug fixes](https://github.com/crystal-lang/crystal/issues?q=is%3Aclosed+milestone%3A0.19.1)
+
+## 0.19.0  (02-09-2016)
+
+* **(breaking change)** Added `select` keyword
+* **(breaking change)** Removed $global variables. Use @@class variables instead.
+* **(breaking change)** Heredoc now ends when the matching identifier is found, either followed by a space or by a non-identifier
+* **(breaking change)** Assignment to a local variable inside an assignment to that same variable is now an error
+* **(breaking change)** Type names like `T`, `T1`, `U`, etc., are now disallowed at the top level, to avoid conflicts with free variables
+* **(breaking change)** Type lookup (`Foo::Bar::Baz`) had some incorrect behaviour that now is fixed. This can break existing code that relied on this incorrect behaviour. The fix is to fully qualify types (`::Foo::Bar::Baz`)
+* **(breaking change)** In relationships like `class Bar < Foo(Baz)` and `include Moo(Baz)`, all of `Foo`, `Moo` and `Baz` must be defined before that point (this was not always the case in previous versions)
+* **(breaking change)** Removed the deprecated syntax `x as T`
+* **(breaking change)** Removed block form of `String#match`
+* **(breaking change)** Removed `IO#read_nonblock`
+* **(breaking change)** `Int#/` now performs floored division. Use `Int#tdiv` for truncated division (see their docs to learn the difference)
+* Added support for LLVM 3.8 (thanks @omarroth)
+* `||` now does type filtering
+* Generic inheritance should now work well, and (instantiated) generic modules can now be used as the type of instance variables
+* `NamedTuple` can now be accessed with strings too (thanks @jhass)
+* `Base64` can now encode and decode directly to an `IO` (thanks @kostya)
+* `BigInt` now uses GMP implementation of gcd and lcm (thanks @endSly)
+* `ECR` now supports removing leading and trailing whitespace (`<%-`, `-%>`)
+* `HTTP::Request#path` now never returns `nil`: it fallbacks to `"/"` (thanks @jhass)
+* `String#tr(..., "")` is now the same as `String#delete`
+* `tool hierarchy` now supports `--format json` (thanks @bmulvihill)
+* Added `Char#ascii?`
+* Added `Class#nilable?` and `Union#nilable?`
+* Added `Hash#has_value?` (thanks @kachick)
+* Added `IO::Sized` and `IO::Delimited` (thanks @RX14)
+* Added `IO::Hexdump` (thanks @ysbaddaden)
+* Added `IO#noecho` and `IO#noecho!` (thanks @jhass)
+* Added `Logger.new(nil)` to create a null logger
+* Added `OptionParser#missing_option` and `OptionParser#invalid_option` (thanks @jhass)
+* Added `Process.exists?`, `Process#exists?` and `Process#terminated?` (thanks @jhass)
+* Added `Process.exec` (thanks @jhass)
+* Added `Slice#copy_to`, `Slice#copy_from`, `Slice#move_to` and `Slice#move_from` (thanks @RX14)
+* Added `URI#==` and `URI#hash` (thanks @timcraft)
+* Added `YAML#parse(IO)`
+* Added `Indexable` module that `Array`, `Slice`, `Tuple` and `StaticArray` include
+* Added `indent` parameter to `to_pretty_json`
+* Added lazy form of `getter` and `property` macros
+* Added macro methods to access an ASTNode's location
+* Unified String and Char to integer/float conversion API (thanks @jhass)
+* [Lots of bug fixes](https://github.com/crystal-lang/crystal/milestone/5?closed=1)
+
 ## 0.18.7 (03-07-2016)
 
 * The `compile` command was renamed back to `build`. The `compile` command is deprecated and will be removed in a future version

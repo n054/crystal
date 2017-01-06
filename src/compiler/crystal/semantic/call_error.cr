@@ -20,28 +20,23 @@ class Crystal::ASTNode
   end
 end
 
-class Crystal::Call
-  def raise_matches_not_found(owner : CStructType, def_name, arg_types, named_args_types, matches = nil)
-    raise_struct_or_union_field_not_found owner, def_name
-  end
-
-  def raise_matches_not_found(owner : CUnionType, def_name, arg_types, named_args_types, matches = nil)
-    raise_struct_or_union_field_not_found owner, def_name
-  end
-
-  def raise_struct_or_union_field_not_found(owner, def_name)
-    if def_name.ends_with?('=')
-      def_name = def_name[0..-2]
+class Crystal::Path
+  def raise_undefined_constant(type)
+    private_const = type.lookup_path(self, include_private: true)
+    if private_const
+      self.raise("private constant #{private_const} referenced")
     end
 
-    var = owner.vars[def_name]?
-    if var
-      args[0].raise "field '#{def_name}' of #{owner.type_desc} #{owner} has type #{var.type}, not #{args[0].type}"
+    similar_name = type.lookup_similar_path(self)
+    if similar_name
+      self.raise("undefined constant #{self} #{type.program.colorize("(did you mean '#{similar_name}')").yellow.bold}")
     else
-      raise "#{owner.type_desc} #{owner} has no field '#{def_name}'"
+      self.raise("undefined constant #{self}")
     end
   end
+end
 
+class Crystal::Call
   def raise_matches_not_found(owner, def_name, arg_types, named_args_types, matches = nil)
     # Special case: Foo+:Class#new
     if owner.is_a?(VirtualMetaclassType) && def_name == "new"
@@ -84,7 +79,7 @@ class Crystal::Call
     if defs.empty?
       check_macro_wrong_number_of_arguments(def_name)
 
-      owner_trace = obj.try &.find_owner_trace(owner)
+      owner_trace = obj.try &.find_owner_trace(owner.program, owner)
       similar_name = owner.lookup_similar_def_name(def_name, self.args.size, block)
 
       error_msg = String.build do |msg|
@@ -120,7 +115,7 @@ class Crystal::Call
 
         # Check if it's an instance variable that was never assigned a value
         if obj.is_a?(InstanceVar)
-          scope = self.scope.as(InstanceVarContainer)
+          scope = self.scope
           ivar = scope.lookup_instance_var(obj.name)
           deps = ivar.dependencies?
           if deps && deps.size == 1 && deps.first.same?(program.nil_var)
@@ -199,7 +194,7 @@ class Crystal::Call
     end
 
     if defs_matching_args_size.size > 0
-      str = MemoryIO.new
+      str = IO::Memory.new
       if check_single_def_error_message(defs_matching_args_size, named_args_types, str)
         raise str.to_s
       else
@@ -218,7 +213,7 @@ class Crystal::Call
     end
 
     if args.size == 1 && args.first.type.includes_type?(program.nil)
-      owner_trace = args.first.find_owner_trace(program.nil)
+      owner_trace = args.first.find_owner_trace(program, program.nil)
     end
 
     arg_names = [] of Array(String)
@@ -361,8 +356,8 @@ class Crystal::Call
     named_args_types = NamedArgumentType.from_args(named_args)
     signature = CallSignature.new(def_name, args.map(&.type), block, named_args_types)
     defs.each do |a_def|
-      context = MatchContext.new(owner, a_def.owner)
-      match = MatchesLookup.match_def(signature, DefWithMetadata.new(a_def), context)
+      context = MatchContext.new(owner, a_def.owner, def_free_vars: a_def.free_vars)
+      match = signature.match(DefWithMetadata.new(a_def), context)
       next unless match
 
       if a_def.owner == owner
@@ -440,7 +435,7 @@ class Crystal::Call
           # argument type have the same string representation
           res_to_s = res.to_s
           if (arg_type = arg_types.try &.[i]?) && arg_type.to_s == res_to_s &&
-             (matching_type = TypeLookup.lookup?(a_def.owner, res))
+             (matching_type = a_def.owner.lookup_type?(res))
             str << matching_type
           else
             str << res_to_s
@@ -485,8 +480,12 @@ class Crystal::Call
   end
 
   def check_macro_wrong_number_of_arguments(def_name)
+    obj = self.obj
+    return if obj && !obj.is_a?(Path)
+
     macros = in_macro_target &.lookup_macros(def_name)
     return unless macros
+    macros = macros.reject &.visibility.private?
 
     if macros.size == 1
       if msg = check_named_args_and_splats(macros.first, named_args)
@@ -600,24 +599,24 @@ class Crystal::Call
   end
 
   def in_same_namespace?(scope, target)
-    top_container(scope) == top_container(target) ||
+    top_namespace(scope) == top_namespace(target) ||
       scope.parents.try &.any? { |parent| in_same_namespace?(parent, target) }
   end
 
-  def top_container(type)
-    container = case type
+  def top_namespace(type)
+    namespace = case type
                 when NamedType
-                  type.container
+                  type.namespace
                 when GenericClassInstanceType
-                  type.container
+                  type.namespace
                 else
                   nil
                 end
-    case container
+    case namespace
     when Program
       type
     when NamedType, GenericClassInstanceType
-      top_container(container)
+      top_namespace(namespace)
     else
       type
     end
@@ -643,8 +642,15 @@ class Crystal::Call
     Call.full_name(owner, def_name)
   end
 
-  def self.full_name(owner, def_name = name)
-    owner.to_s_with_method_name(def_name)
+  def self.full_name(owner, method_name = name)
+    case owner
+    when Program
+      method_name
+    when .metaclass?
+      "#{owner.instance_type}.#{method_name}"
+    else
+      "#{owner}##{method_name}"
+    end
   end
 
   private def colorize(obj)

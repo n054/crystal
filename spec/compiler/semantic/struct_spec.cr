@@ -130,7 +130,7 @@ describe "Semantic: struct" do
 
       Foo::Test(Int32).new(Foo::Test(Int32).new(nil))
       ),
-      "recursive struct Foo::Test(Int32) detected: `@test : (Foo::Test(Int32) | Nil)`"
+      "recursive struct Foo::Test(T) detected: `@test : (Foo::Test(T) | Nil)`"
   end
 
   it "errors on mutually recursive struct" do
@@ -153,13 +153,13 @@ describe "Semantic: struct" do
 
   it "can't extend struct from non-abstract struct" do
     assert_error %(
-      struct A
+      struct Foo
       end
 
-      struct B < A
+      struct Bar < Foo
       end
       ),
-      "can't extend non-abstract struct A"
+      "can't extend non-abstract struct Foo"
   end
 
   it "unifies type to virtual type" do
@@ -211,7 +211,7 @@ describe "Semantic: struct" do
         end
       end
 
-      Bar.new as Foo
+      Bar.new.as(Foo)
       )) { types["Foo"].virtual_type! }
   end
 
@@ -228,5 +228,27 @@ describe "Semantic: struct" do
       end
       ),
       "recursive struct Foo detected: `@moo : Moo` -> `Moo` -> `Foo`"
+  end
+
+  it "detects recursive struct through inheritance (#3071)" do
+    assert_error %(
+      abstract struct Foo
+      end
+
+      struct Bar < Foo
+        @value = uninitialized Foo
+      end
+      ),
+      "recursive struct Bar detected: `@value : Foo` -> `Foo` -> `Bar`"
+  end
+
+  it "errors if defining finalize for struct (#3840)" do
+    assert_error %(
+      struct Foo
+        def finalize
+        end
+      end
+      ),
+      "structs can't have finalizers because they are not tracked by the GC"
   end
 end

@@ -432,8 +432,8 @@ describe "Code gen: macro" do
 
   it "can use constants" do
     run(%(
-      A = 1
-      {{ A }}
+      CONST = 1
+      {{ CONST }}
       )).to_i.should eq(1)
   end
 
@@ -669,7 +669,7 @@ describe "Code gen: macro" do
       ))
   end
 
-  it "executs subclasses" do
+  it "executes subclasses" do
     run(%(
       require "prelude"
 
@@ -690,7 +690,7 @@ describe "Code gen: macro" do
       )).to_string.should eq("Bar-Baz")
   end
 
-  it "executs all_subclasses" do
+  it "executes all_subclasses" do
     run(%(
       require "prelude"
 
@@ -793,51 +793,63 @@ describe "Code gen: macro" do
         end
       end
 
-      class A
-        @@children : Pointer(A)
-        @@children = Pointer(A).malloc(1_u64)
+      class Foo
+        @@children : Pointer(Foo)
+        @@children = Pointer(Foo).malloc(1_u64)
 
         def self.children
           @@children
         end
       end
 
-      A.children.value = A.new
-      A.children.value.class_name
+      Foo.children.value = Foo.new
+      Foo.children.value.class_name
 
-      class B < A; end
+      class Bar < Foo; end
 
-      A.children.value = B.new
-      A.children.value.class_name
+      Foo.children.value = Bar.new
+      Foo.children.value.class_name
 
-      class C < B; end
-      A.children.value = C.new
-      A.children.value.class_name
-      )).to_string.should eq("C")
+      class Baz < Bar; end
+      Foo.children.value = Baz.new
+      Foo.children.value.class_name
+      )).to_string.should eq("Baz")
   end
 
   it "recalculates method when virtual metaclass type is added" do
     run(%(
       require "prelude"
 
-      $x = [] of String
+      class Global
+        @@x = [] of String
+        @@runnables = [] of Runnable.class
+
+        def self.x=(@@x)
+        end
+
+        def self.x
+          @@x
+        end
+
+        def self.runnables
+          @@runnables
+        end
+      end
 
       def run
-        $runnables.each &.run
+        Global.runnables.each &.run
       end
 
       class Runnable
       end
-
-      $runnables = [] of Runnable.class
 
       class Runnable
         macro inherited
-          $runnables << self
+          Global.runnables << self
         end
 
         def self.run : Nil
-          $x << {{@type.name.stringify}}
+          Global.x << {{@type.name.stringify}}
           nil
         end
       end
@@ -846,13 +858,13 @@ describe "Code gen: macro" do
       end
 
       run
-      $x.clear
+      Global.x.clear
 
       class RunnableTest < Test
       end
 
       run
-      $x.join(", ")
+      Global.x.join(", ")
       )).to_string.should eq("Test, RunnableTest")
   end
 
@@ -1024,8 +1036,8 @@ describe "Code gen: macro" do
         nil
       end
 
-      me
-      )).to_i.should eq(123)
+      me || 0
+      ), inject_primitives: false).to_i.should eq(123)
   end
 
   it "passes #826" do
@@ -1051,10 +1063,10 @@ describe "Code gen: macro" do
       end
 
       foo do
-        X = 123
+        CONST = 123
       end
 
-      X
+      CONST
       )).to_i.should eq(123)
   end
 
@@ -1189,7 +1201,7 @@ describe "Code gen: macro" do
 
   it "can access free variables" do
     run(%(
-      def foo(x : T)
+      def foo(x : T) forall T
         {{ T.stringify }}
       end
 
@@ -1215,13 +1227,13 @@ describe "Code gen: macro" do
 
   it "expands Path with resolve method" do
     run(%(
-      A = 1
+      CONST = 1
 
       macro id(path)
         {{path.resolve}}
       end
 
-      id(A)
+      id(CONST)
       )).to_i.should eq(1)
   end
 
@@ -1334,7 +1346,7 @@ describe "Code gen: macro" do
   it "uses tuple T in method with free vars" do
     run(%(
       struct Tuple
-        def foo(x : U)
+        def foo(x : U) forall U
           {{T.size}}
         end
       end
@@ -1354,7 +1366,7 @@ describe "Code gen: macro" do
       class Bar < Foo
       end
 
-      (Bar.new as Foo).method
+      Bar.new.as(Foo).method
       )).to_string.should eq("Bar")
   end
 
@@ -1394,5 +1406,264 @@ describe "Code gen: macro" do
         "hello \#{ [{ %a, %a }, %a] }"
       {% end %}
       )).to_string.should eq(%(hello [{"world", "world"}, "world"]))
+  end
+
+  it "retains original yield expression (#2923)" do
+    run(%(
+      macro foo
+        def bar(baz)
+          {{yield}}
+        end
+      end
+
+      foo do
+        baz
+      end
+
+      bar("hi")
+      )).to_string.should eq("hi")
+  end
+
+  it "surrounds {{yield}} with begin/end" do
+    run(%(
+      macro foo
+        a = {{yield}}
+      end
+
+      a = 0
+      foo do
+        1
+        2
+      end
+      a
+      )).to_i.should eq(2)
+  end
+
+  it "initializes instance var in macro" do
+    run(%(
+      class Foo
+        {% begin %}
+          @x = 1
+        {% end %}
+      end
+
+      Foo.new.@x
+      ), inject_primitives: false).to_i.should eq(1)
+  end
+
+  it "initializes class var in macro" do
+    run(%(
+      class Foo
+        {% begin %}
+          @@x = 1
+        {% end %}
+
+        def self.x
+          @@x
+        end
+      end
+
+      Foo.x
+      ), inject_primitives: false).to_i.should eq(1)
+  end
+
+  it "expands @def in inline macro" do
+    run(%(
+      def foo
+        {{@def.name.stringify}}
+      end
+
+      foo
+      )).to_string.should eq("foo")
+  end
+
+  it "expands @def in macro" do
+    run(%(
+      macro foo
+        {{@def.name.stringify}}
+      end
+
+      def bar
+        foo
+      end
+
+      bar
+      )).to_string.should eq("bar")
+  end
+
+  it "gets constant" do
+    run(%(
+      class Foo
+        Bar = 42
+      end
+
+      {{ Foo.constant("Bar") }}
+      )).to_i.should eq(42)
+  end
+
+  it "determines if overrides (false)" do
+    run(%(
+      class Foo
+        def foo
+          1
+        end
+      end
+
+      class Bar < Foo
+      end
+
+      {{ Bar.overrides?(Foo, "foo") }}
+      )).to_b.should be_false
+  end
+
+  it "determines if overrides (true)" do
+    run(%(
+      class Foo
+        def foo
+          1
+        end
+      end
+
+      class Bar < Foo
+        def foo
+          2
+        end
+      end
+
+      {{ Bar.overrides?(Foo, "foo") }}
+      )).to_b.should be_true
+  end
+
+  it "determines if overrides, through another class (true)" do
+    run(%(
+      class Foo
+        def foo
+          1
+        end
+      end
+
+      class Bar < Foo
+        def foo
+          2
+        end
+      end
+
+      class Baz < Bar
+      end
+
+      {{ Baz.overrides?(Foo, "foo") }}
+      )).to_b.should be_true
+  end
+
+  it "determines if overrides, through module (true)" do
+    run(%(
+      class Foo
+        def foo
+          1
+        end
+      end
+
+      module Moo
+        def foo
+          2
+        end
+      end
+
+      class Bar < Foo
+        include Moo
+      end
+
+      class Baz < Bar
+      end
+
+      {{ Baz.overrides?(Foo, "foo") }}
+      )).to_b.should be_true
+  end
+
+  it "determines if overrides, with macro method (false)" do
+    run(%(
+      class Foo
+        def foo
+          {{ @type }}
+        end
+      end
+
+      class Bar < Foo
+      end
+
+      (Foo.new || Bar.new).foo
+
+      def x
+        {{ Bar.overrides?(Foo, "foo") }}
+      end
+
+      x
+      )).to_b.should be_false
+  end
+
+  it "forwards file location" do
+    run(%(
+      macro foo
+        bar
+      end
+
+      macro bar(file = __FILE__)
+        {{file}}
+      end
+
+      foo
+      ), filename: "bar.cr").to_string.should eq("bar.cr")
+  end
+
+  it "forwards dir location" do
+    run(%(
+      macro foo
+        bar
+      end
+
+      macro bar(dir = __DIR__)
+        {{dir}}
+      end
+
+      foo
+      ), filename: "somedir/bar.cr").to_string.should eq("somedir")
+  end
+
+  it "forwards line number" do
+    run(%(
+      macro foo
+        bar
+      end
+
+      macro bar(line = __LINE__)
+        {{line}}
+      end
+
+      foo
+      ), filename: "somedir/bar.cr", inject_primitives: false).to_i.should eq(10)
+  end
+
+  it "keeps line number with no block" do
+    run(%(
+      macro foo
+        {{ yield }}
+        __LINE__
+      end
+
+      foo
+    ), filename: "somedir/bar.cr", inject_primitives: false).to_i.should eq(7)
+  end
+
+  it "keeps line number with a block" do
+    run(%(
+      macro foo
+        {{ yield }}
+        __LINE__
+      end
+
+      foo do
+        1
+      end
+    ), filename: "somedir/bar.cr", inject_primitives: false).to_i.should eq(7)
   end
 end

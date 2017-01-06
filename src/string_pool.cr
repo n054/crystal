@@ -4,6 +4,7 @@
 #
 # ```
 # require "string_pool"
+#
 # pool = StringPool.new
 # a = "foo" + "bar"
 # b = "foo" + "bar"
@@ -29,7 +30,7 @@ class StringPool
     @size = 0
   end
 
-  # Returns `true` if the String Pool has no element otherwise returns `false`.
+  # Returns `true` if the `StringPool` has no element otherwise returns `false`.
   #
   # ```
   # pool = StringPool.new
@@ -54,7 +55,7 @@ class StringPool
   # pool.get(slice)
   # pool.empty? # => false
   #  ```
-  def get(slice : Slice(UInt8))
+  def get(slice : Bytes)
     get slice.pointer(slice.size), slice.size
   end
 
@@ -89,19 +90,19 @@ class StringPool
     entry
   end
 
-  # Returns a string with the contents of the given `MemoryIO`.
+  # Returns a string with the contents of the given `IO::Memory`.
   #
   # If a string with those contents was already present in the pool, that one is returned.
   # Otherwise a new string is created, put in the pool and returned
   #
   # ```
   # pool = StringPool.new
-  # io = MemoryIO.new "crystal"
+  # io = IO::Memory.new "crystal"
   # pool.empty? # => true
   # pool.get(io)
   # pool.empty? # => false
   # ```
-  def get(str : MemoryIO)
+  def get(str : IO::Memory)
     get(str.buffer, str.bytesize)
   end
 

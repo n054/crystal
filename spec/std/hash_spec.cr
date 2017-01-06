@@ -1,20 +1,18 @@
 require "spec"
 
-module HashSpec
-  alias RecursiveHash = Hash(RecursiveHash, RecursiveHash)
+private alias RecursiveHash = Hash(RecursiveHash, RecursiveHash)
 
-  class HashBreaker
-    getter x : Int32
+private class HashBreaker
+  getter x : Int32
 
-    def initialize(@x)
-    end
+  def initialize(@x)
   end
-
-  class NeverInstantiated
-  end
-
-  alias RecursiveType = String | Int32 | Array(RecursiveType) | Hash(Symbol, RecursiveType)
 end
+
+private class NeverInstantiated
+end
+
+private alias RecursiveType = String | Int32 | Array(RecursiveType) | Hash(Symbol, RecursiveType)
 
 describe "Hash" do
   describe "empty" do
@@ -204,6 +202,18 @@ describe "Hash" do
     end
   end
 
+  describe "has_value?" do
+    it "returns true if contains the value" do
+      a = {1 => 2, 3 => 4, 5 => 6}
+      a.has_value?(4).should be_true
+    end
+
+    it "returns false if does not contain the value" do
+      a = {1 => 2, 3 => 4, 5 => 6}
+      a.has_value?(3).should be_false
+    end
+  end
+
   describe "delete" do
     it "deletes key in the beginning" do
       a = {1 => 2, 3 => 4, 5 => 6}
@@ -272,7 +282,7 @@ describe "Hash" do
     assert { {1 => 2, 3 => 4}.to_s.should eq("{1 => 2, 3 => 4}") }
 
     assert do
-      h = {} of HashSpec::RecursiveHash => HashSpec::RecursiveHash
+      h = {} of RecursiveHash => RecursiveHash
       h[h] = h
       h.to_s.should eq("{{...} => {...}}")
     end
@@ -330,7 +340,7 @@ describe "Hash" do
   end
 
   it "merges recursive type (#1693)" do
-    hash = {:foo => "bar"} of Symbol => HashSpec::RecursiveType
+    hash = {:foo => "bar"} of Symbol => RecursiveType
     result = hash.merge({:foobar => "foo"})
     result.should eq({:foo => "bar", :foobar => "foo"})
   end
@@ -407,6 +417,30 @@ describe "Hash" do
 
     h2 = h1.reject! { false }
     h2.should eq(nil)
+    h1.should eq({:a => 1, :b => 2, :c => 3})
+  end
+
+  it "compacts" do
+    h1 = {:a => 1, :b => 2, :c => nil}
+
+    h2 = h1.compact
+    h2.should be_a(Hash(Symbol, Int32))
+    h2.should eq({:a => 1, :b => 2})
+  end
+
+  it "compacts!" do
+    h1 = {:a => 1, :b => 2, :c => nil}
+
+    h2 = h1.compact!
+    h2.should eq({:a => 1, :b => 2})
+    h2.should be(h1)
+  end
+
+  it "returns nil when using compact! and no changes were made" do
+    h1 = {:a => 1, :b => 2, :c => 3}
+
+    h2 = h1.compact!
+    h2.should be_nil
     h1.should eq({:a => 1, :b => 2, :c => 3})
   end
 
@@ -504,13 +538,13 @@ describe "Hash" do
   end
 
   it "fetches from empty hash with default value" do
-    x = {} of Int32 => HashSpec::HashBreaker
-    breaker = x.fetch(10) { HashSpec::HashBreaker.new(1) }
+    x = {} of Int32 => HashBreaker
+    breaker = x.fetch(10) { HashBreaker.new(1) }
     breaker.x.should eq(1)
   end
 
   it "does to to_s with instance that was never instantiated" do
-    x = {} of Int32 => HashSpec::NeverInstantiated
+    x = {} of Int32 => NeverInstantiated
     x.to_s.should eq("{}")
   end
 
@@ -523,6 +557,36 @@ describe "Hash" do
     h3 = h2.invert
     h3.size.should eq(2)
     %w(a c).should contain h3[1]
+  end
+
+  it "does each" do
+    hash = {"foo" => 1, "bar" => 2}
+    ks = [] of String
+    vs = [] of Int32
+    hash.each do |k, v|
+      ks << k
+      vs << v
+    end.should be_nil
+    ks.should eq(["foo", "bar"])
+    vs.should eq([1, 2])
+  end
+
+  it "does each_key" do
+    hash = {"foo" => 1, "bar" => 2}
+    ks = [] of String
+    hash.each_key do |k|
+      ks << k
+    end.should be_nil
+    ks.should eq(["foo", "bar"])
+  end
+
+  it "does each_value" do
+    hash = {"foo" => 1, "bar" => 2}
+    vs = [] of Int32
+    hash.each_value do |v|
+      vs << v
+    end.should be_nil
+    vs.should eq([1, 2])
   end
 
   it "gets each iterator" do
@@ -559,14 +623,14 @@ describe "Hash" do
     it "pass key, value, index values into block" do
       hash = {2 => 4, 5 => 10, 7 => 14}
       results = [] of Int32
-      hash.each_with_index { |(k, v), i| results << k + v + i }
+      hash.each_with_index { |(k, v), i| results << k + v + i }.should be_nil
       results.should eq [6, 16, 23]
     end
 
     it "can be used with offset" do
       hash = {2 => 4, 5 => 10, 7 => 14}
       results = [] of Int32
-      hash.each_with_index(3) { |(k, v), i| results << k + v + i }
+      hash.each_with_index(3) { |(k, v), i| results << k + v + i }.should be_nil
       results.should eq [9, 19, 26]
     end
   end

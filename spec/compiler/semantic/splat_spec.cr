@@ -387,7 +387,7 @@ describe "Semantic: splat" do
 
   it "uses splat restriction" do
     assert_type(%(
-      def foo(*args : *T)
+      def foo(*args : *T) forall T
         T
       end
 
@@ -397,7 +397,7 @@ describe "Semantic: splat" do
 
   it "uses splat restriction, matches empty" do
     assert_type(%(
-      def foo(*args : *T)
+      def foo(*args : *T) forall T
         T
       end
 
@@ -462,7 +462,7 @@ describe "Semantic: splat" do
       class Foo(*T)
       end
 
-      def method(x : Foo(A, *B, C))
+      def method(x : Foo(A, *B, C)) forall A, B, C
         {A, B, C}
       end
 
@@ -476,7 +476,7 @@ describe "Semantic: splat" do
       class Foo(*T)
       end
 
-      def method(x : Foo(A, *B, *C))
+      def method(x : Foo(A, *B, *C)) forall A, B, C
         {A, B, C}
       end
 
@@ -488,7 +488,7 @@ describe "Semantic: splat" do
 
   it "matches with splat" do
     assert_type(%(
-    def foo(&block : *{Int32, Int32} -> U)
+    def foo(&block : *{Int32, Int32} -> U) forall U
       tup = {1, 2}
       yield *tup
     end
@@ -497,6 +497,34 @@ describe "Semantic: splat" do
       {x, y}
     end
     )) { tuple_of([int32, int32]) }
+  end
+
+  it "matches typed before non-typed (1) (#3134)" do
+    assert_type(%(
+      def bar(*args)
+        "free"
+      end
+
+      def bar(*args : Int32)
+        1
+      end
+
+      {bar(1, 2), bar('a', 1)}
+      )) { tuple_of([int32, string]) }
+  end
+
+  it "matches typed before non-typed (1) (#3134)" do
+    assert_type(%(
+      def bar(*args : Int32)
+        1
+      end
+
+      def bar(*args)
+        "free"
+      end
+
+      {bar(1, 2), bar('a', 1)}
+      )) { tuple_of([int32, string]) }
   end
 
   describe Splat do

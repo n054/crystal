@@ -124,13 +124,6 @@ module Crystal
       node
     end
 
-    def transform(node : IfDef)
-      node.cond = node.cond.transform(self)
-      node.then = node.then.transform(self)
-      node.else = node.else.transform(self)
-      node
-    end
-
     def transform(node : MultiAssign)
       transform_many node.targets
       transform_many node.values
@@ -217,6 +210,18 @@ module Crystal
     def transform(node : When)
       transform_many node.conds
       node.body = node.body.transform(self)
+      node
+    end
+
+    def transform(node : Select)
+      node.whens.map! do |a_when|
+        Select::When.new(a_when.condition.transform(self), a_when.body.transform(self))
+      end
+
+      if node_else = node.else
+        node.else = node_else.transform(self)
+      end
+
       node
     end
 
@@ -373,6 +378,12 @@ module Crystal
       node
     end
 
+    def transform(node : OpAssign)
+      node.target = node.target.transform(self)
+      node.value = node.value.transform(self)
+      node
+    end
+
     def transform(node : Out)
       node.exp = node.exp.transform(self)
       node
@@ -455,12 +466,7 @@ module Crystal
       node
     end
 
-    def transform(node : StructDef)
-      node.body = node.body.transform(self)
-      node
-    end
-
-    def transform(node : UnionDef)
+    def transform(node : CStructOrUnionDef)
       node.body = node.body.transform(self)
       node
     end
@@ -558,10 +564,6 @@ module Crystal
       node
     end
 
-    def transform(node : MacroId)
-      node
-    end
-
     def transform(node : MacroVar)
       node
     end
@@ -572,7 +574,7 @@ module Crystal
 
     def transform(node : Asm)
       node.output = node.output.try &.transform(self)
-      node.inputs = node.inputs.try &.each &.transform(self)
+      node.inputs.try &.each &.transform(self)
       node
     end
 

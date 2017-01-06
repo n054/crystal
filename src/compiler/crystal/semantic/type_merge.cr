@@ -3,8 +3,13 @@ require "../program"
 module Crystal
   class Program
     def type_merge(types : Array(Type?))
-      # Merging two types is the most common case, so we optimize it
-      if types.size == 2
+      case types.size
+      when 0
+        return nil
+      when 1
+        return types.first
+      when 2
+        # Merging two types is the most common case, so we optimize it
         first, second = types
         did_merge, merged_type = type_merge_two(first, second)
         return merged_type if did_merge
@@ -14,8 +19,13 @@ module Crystal
     end
 
     def type_merge(nodes : Array(ASTNode))
-      # Merging two types is the most common case, so we optimize it
-      if nodes.size == 2
+      case nodes.size
+      when 0
+        return nil
+      when 1
+        return nodes.first.type?
+      when 2
+        # Merging two types is the most common case, so we optimize it
         first, second = nodes
         did_merge, merged_type = type_merge_two(first.type?, second.type?)
         return merged_type if did_merge
@@ -75,7 +85,12 @@ module Crystal
     end
 
     def add_type(types, type : AliasType)
-      add_type types, type.remove_alias
+      aliased = type.remove_alias
+      if aliased == type
+        types << type unless types.includes? type
+      else
+        add_type types, aliased
+      end
     end
 
     # When Void participates in a union, it becomes Nil
@@ -108,12 +123,14 @@ module Crystal
       all_types = [types.shift] of Type
 
       types.each do |t2|
-        not_found = all_types.each do |t1|
+        not_found = all_types.all? do |t1|
           ancestor = t1.common_ancestor(t2)
           if ancestor
             all_types.delete t1
             all_types << ancestor.virtual_type
-            break
+            false
+          else
+            true
           end
         end
         if not_found
@@ -161,6 +178,16 @@ module Crystal
     end
   end
 
+  class GenericModuleInstanceType
+    def common_ancestor(other : Type)
+      if other.implements?(self)
+        self
+      else
+        nil
+      end
+    end
+  end
+
   class GenericClassType
     def common_ancestor(other : Type)
       if other.implements?(self)
@@ -172,52 +199,46 @@ module Crystal
   end
 
   class ClassType
-    def common_ancestor(other : ClassType)
-      # This discards Object, Reference and Value
-      if depth <= 1
-        return nil
-      end
-
-      case self
-      when program.struct, program.int, program.float
-        return nil
-      when other
-        return self
-      end
-
-      if depth == other.depth
-        my_superclass = @superclass
-        other_superclass = other.superclass
-
-        if my_superclass && other_superclass
-          return my_superclass.common_ancestor(other_superclass)
-        end
-      elsif depth > other.depth
-        my_superclass = @superclass
-        if my_superclass
-          return my_superclass.common_ancestor(other)
-        end
-      elsif depth < other.depth
-        other_superclass = other.superclass
-        if other_superclass
-          return common_ancestor(other_superclass)
-        end
-      end
-
-      nil
+    def common_ancestor(other : ClassType | GenericClassInstanceType)
+      class_common_ancestor(self, other)
     end
 
     def common_ancestor(other : VirtualType)
       common_ancestor(other.base_type)
     end
 
-    def common_ancestor(other : NonGenericModuleType)
+    def common_ancestor(other : NonGenericModuleType | GenericModuleInstanceType)
+      other.common_ancestor(self)
+    end
+  end
+
+  class GenericClassInstanceType
+    def common_ancestor(other : ClassType | GenericClassInstanceType)
+      class_common_ancestor(self, other)
+    end
+
+    def common_ancestor(other : VirtualType)
+      common_ancestor(other.base_type)
+    end
+
+    def common_ancestor(other : NonGenericModuleType | GenericModuleInstanceType)
       other.common_ancestor(self)
     end
   end
 
   class MetaclassType
-    def common_ancestor(other : MetaclassType | VirtualMetaclassType)
+    def common_ancestor(other : MetaclassType | VirtualMetaclassType | GenericClassInstanceMetaclassType)
+      if instance_type.module? || other.instance_type.module?
+        nil
+      else
+        common = instance_type.common_ancestor(other.instance_type)
+        common.try &.metaclass
+      end
+    end
+  end
+
+  class GenericClassInstanceMetaclassType
+    def common_ancestor(other : MetaclassType | VirtualMetaclassType | GenericClassInstanceMetaclassType)
       if instance_type.module? || other.instance_type.module?
         nil
       else
@@ -284,7 +305,7 @@ module Crystal
       end
 
       # If the names are the same we now merge the types for each key
-      # Note: we use self's order to preserve the order of the tuple on the left hand side
+      # NOTE: we use self's order to preserve the order of the tuple on the left hand side
       merged_entries = self.entries.map_with_index do |self_entry, i|
         name = self_entry.name
         other_type = other.name_type(name)
@@ -295,4 +316,39 @@ module Crystal
       program.named_tuple_of(merged_entries)
     end
   end
+end
+
+private def class_common_ancestor(t1, t2)
+  # This discards Object, Reference and Value
+  if t1.depth <= 1
+    return nil
+  end
+
+  case t1
+  when t1.program.struct, t1.program.int, t1.program.float
+    return nil
+  when t2
+    return t1
+  end
+
+  if t1.depth == t2.depth
+    t1_superclass = t1.superclass
+    t2_superclass = t2.superclass
+
+    if t1_superclass && t2_superclass
+      return t1_superclass.common_ancestor(t2_superclass)
+    end
+  elsif t1.depth > t2.depth
+    t1_superclass = t1.superclass
+    if t1_superclass
+      return t1_superclass.common_ancestor(t2)
+    end
+  elsif t1.depth < t2.depth
+    t2_superclass = t2.superclass
+    if t2_superclass
+      return t1.common_ancestor(t2_superclass)
+    end
+  end
+
+  nil
 end

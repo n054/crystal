@@ -30,7 +30,7 @@ require "./codegen"
 
 class Crystal::CodeGenVisitor
   # The special constants ARGC_UNSAFE and ARGV_UNSAFE need to be initialized
-  # as soon as the program starts, because we have access to argc and arv
+  # as soon as the program starts, because we have access to argc and argv
   # in the main function
   def initialize_argv_and_argc
     {"ARGC_UNSAFE", "ARGV_UNSAFE"}.each do |name|
@@ -47,7 +47,7 @@ class Crystal::CodeGenVisitor
   def declare_const(const)
     global_name = const.llvm_name
     global = @main_mod.globals[global_name]? ||
-      @main_mod.globals.add(llvm_type(const.value.type), global_name)
+             @main_mod.globals.add(llvm_type(const.value.type), global_name)
     global.linkage = LLVM::Linkage::Internal if @single_module
     global
   end
@@ -117,8 +117,8 @@ class Crystal::CodeGenVisitor
 
     define_main_function(fun_name, ([] of LLVM::Type), LLVM::Void, needs_alloca: true) do |func|
       with_cloned_context do
-        # "self" in a constant is the constant's container
-        context.type = const.container
+        # "self" in a constant is the constant's namespace
+        context.type = const.namespace
 
         # Start with fresh variables
         context.vars = LLVMVars.new

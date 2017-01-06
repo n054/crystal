@@ -5,17 +5,12 @@ require "../syntax/transformer"
 module Crystal
   class Program
     def normalize(node, inside_exp = false)
-      normalizer = Normalizer.new(self)
-      normalizer.exp_nest = 1 if inside_exp
-      node = normalizer.normalize(node)
-      puts node if ENV["SSA"]? == "1"
-      node
+      node.transform Normalizer.new(self)
     end
   end
 
   class Normalizer < Transformer
     getter program : Program
-    property exp_nest : Int32
 
     @dead_code : Bool
     @current_def : Def?
@@ -23,21 +18,13 @@ module Crystal
     def initialize(@program)
       @dead_code = false
       @current_def = nil
-      @exp_nest = 0
-    end
-
-    def normalize(node)
-      node.transform(self)
     end
 
     def before_transform(node)
       @dead_code = false
-      @exp_nest += 1 if nesting_exp?(node)
     end
 
     def after_transform(node)
-      @exp_nest -= 1 if nesting_exp?(node)
-
       case node
       when Return, Break, Next
         @dead_code = true
@@ -45,15 +32,6 @@ module Crystal
         # Skip
       else
         @dead_code = false
-      end
-    end
-
-    def nesting_exp?(node)
-      case node
-      when Expressions, VisibilityModifier, MacroFor, MacroIf, MacroExpression, Require, IfDef
-        false
-      else
-        true
       end
     end
 
@@ -103,12 +81,12 @@ module Crystal
         when NumberLiteral, Var, InstanceVar
           transform_many node.args
           left = obj
-          right = Call.new(middle.clone, node.name, node.args)
+          right = Call.new(middle.clone, node.name, node.args).at(middle)
         else
-          temp_var = new_temp_var
+          temp_var = program.new_temp_var
           temp_assign = Assign.new(temp_var.clone, middle)
-          left = Call.new(obj.obj, obj.name, temp_assign)
-          right = Call.new(temp_var.clone, node.name, node.args)
+          left = Call.new(obj.obj, obj.name, temp_assign).at(obj.obj)
+          right = Call.new(temp_var.clone, node.name, node.args).at(node)
         end
         node = And.new(left, right)
         node = node.transform self
@@ -206,18 +184,6 @@ module Crystal
       While.new(not_exp, node.body).at(node)
     end
 
-    # Evaluate the ifdef's flags.
-    # If they hold, keep the "then" part.
-    # If they don't, keep the "else" part.
-    def transform(node : IfDef)
-      cond_value = eval_flags(node.cond)
-      if cond_value
-        node.then.transform(self)
-      else
-        node.else.transform(self)
-      end
-    end
-
     # Check if the right hand side is dead code
     def transform(node : Assign)
       super
@@ -229,51 +195,186 @@ module Crystal
       end
     end
 
-    def new_temp_var
-      program.new_temp_var
+    # Convert `a += b` to `a = a + b`
+    def transform(node : OpAssign)
+      super
+
+      target = node.target
+      if target.is_a?(Call)
+        if target.name == "[]"
+          transform_op_assign_index(node, target)
+        else
+          transform_op_assign_call(node, target)
+        end
+      else
+        transform_op_assign_simple(node, target)
+      end
     end
 
-    def eval_flags(node)
-      evaluator = FlagsEvaluator.new(program)
-      node.accept evaluator
-      evaluator.value
+    def transform_op_assign_call(node, target)
+      obj = target.obj.not_nil!
+
+      # Convert
+      #
+      #     a.exp += b
+      #
+      # To
+      #
+      #     tmp = a
+      #     tmp.exp=(tmp.exp + b)
+      case obj
+      when Var, InstanceVar, ClassVar, .simple_literal?
+        tmp = obj
+      else
+        tmp = program.new_temp_var
+
+        # (1) = tmp = a
+        assign = Assign.new(tmp, obj).at(node)
+      end
+
+      # (2) = tmp.exp
+      call = Call.new(tmp.clone, target.name).at(node)
+
+      case node.op
+      when "||"
+        # Special: tmp.exp || tmp.exp=(b)
+        #
+        # (3) = tmp.exp=(b)
+        right = Call.new(tmp.clone, "#{target.name}=", node.value).at(node)
+
+        # (4) = (2) || (3)
+        call = Or.new(call, right).at(node)
+      when "&&"
+        # Special: tmp.exp && tmp.exp=(b)
+        #
+        # (3) = tmp.exp=(b)
+        right = Call.new(tmp.clone, "#{target.name}=", node.value).at(node)
+
+        # (4) = (2) && (3)
+        call = And.new(call, right).at(node)
+      else
+        # (3) = (2) + b
+        call = Call.new(call, node.op, node.value).at(node)
+
+        # (4) = tmp.exp=((3))
+        call = Call.new(tmp.clone, "#{target.name}=", call).at(node)
+      end
+
+      # (1); (4)
+      if assign
+        Expressions.new([assign, call]).at(node)
+      else
+        call
+      end
     end
 
-    class FlagsEvaluator < Visitor
-      getter value : Bool
+    def transform_op_assign_index(node, target)
+      obj = target.obj.not_nil!
 
-      def initialize(@program : Program)
-        @value = false
+      # Convert
+      #
+      #     a[exp1, exp2, ...] += b
+      #
+      # To
+      #
+      #     tmp = a
+      #     tmp1 = exp1
+      #     tmp2 = exp2
+      #     ...
+      #     tmp.[]=(tmp1, tmp2, ..., tmp[tmp1, tmp2, ...] + b)
+      tmp_args = target.args.map { program.new_temp_var.as(ASTNode) }
+      tmp = program.new_temp_var
+
+      # (1) = tmp1 = exp1; tmp2 = exp2; ...; tmp = a
+      tmp_assigns = Array(ASTNode).new(tmp_args.size + 1)
+      tmp_args.each_with_index do |var, i|
+        # For simple literals we don't need a temp variable
+        arg = target.args[i]
+        if arg.simple_literal?
+          tmp_args[i] = arg
+        else
+          tmp_assigns << Assign.new(var.clone, arg).at(node)
+        end
       end
 
-      def visit(node : Var)
-        @value = @program.has_flag?(node.name)
+      case obj
+      when Var, InstanceVar, ClassVar, .simple_literal?
+        # Nothing
+        tmp = obj
+      else
+        tmp_assigns << Assign.new(tmp, obj).at(node)
       end
 
-      def visit(node : Not)
-        node.exp.accept self
-        @value = !@value
-        false
+      case node.op
+      when "||"
+        # Special: tmp[tmp1, tmp2, ...]? || (tmp[tmp1, tmp2, ...] = b)
+        #
+        # (2) = tmp[tmp1, tmp2, ...]?
+        call = Call.new(tmp.clone, "[]?", tmp_args).at(node)
+
+        # (3) = tmp[tmp1, tmp2, ...] = b
+        args = Array(ASTNode).new(tmp_args.size + 1)
+        tmp_args.each { |arg| args << arg.clone }
+        args << node.value
+        right = Call.new(tmp.clone, "[]=", args).at(node)
+
+        # (3) = (2) || (4)
+        call = Or.new(call, right).at(node)
+      when "&&"
+        # Special: tmp[tmp1, tmp2, ...]? && (tmp[tmp1, tmp2, ...] = b)
+        #
+        # (2) = tmp[tmp1, tmp2, ...]?
+        call = Call.new(tmp.clone, "[]?", tmp_args).at(node)
+
+        # (3) = tmp[tmp1, tmp2, ...] = b
+        args = Array(ASTNode).new(tmp_args.size + 1)
+        tmp_args.each { |arg| args << arg.clone }
+        args << node.value
+        right = Call.new(tmp.clone, "[]=", args).at(node)
+
+        # (3) = (2) && (4)
+        call = And.new(call, right).at(node)
+      else
+        # (2) = tmp[tmp1, tmp2, ...]
+        call = Call.new(tmp.clone, "[]", tmp_args).at(node)
+
+        # (3) = (2) + b
+        call = Call.new(call, node.op, node.value).at(node)
+
+        # (4) tmp.[]=(tmp1, tmp2, ..., (3))
+        args = Array(ASTNode).new(tmp_args.size + 1)
+        tmp_args.each { |arg| args << arg.clone }
+        args << call
+        call = Call.new(tmp.clone, "[]=", args).at(node)
       end
 
-      def visit(node : And)
-        node.left.accept self
-        left_value = @value
-        node.right.accept self
-        @value = left_value && @value
-        false
-      end
+      # (1); (4)
+      exps = Array(ASTNode).new(tmp_assigns.size + 2)
+      exps.concat(tmp_assigns)
+      exps << call
+      Expressions.new(exps).at(node)
+    end
 
-      def visit(node : Or)
-        node.left.accept self
-        left_value = @value
-        node.right.accept self
-        @value = left_value || @value
-        false
-      end
+    def transform_op_assign_simple(node, target)
+      case node.op
+      when "&&"
+        # (1) a = b
+        assign = Assign.new(target, node.value).at(node)
 
-      def visit(node : ASTNode)
-        raise "Bug: shouldn't visit #{node} in FlagsEvaluator"
+        # a && (1)
+        And.new(target.clone, assign).at(node)
+      when "||"
+        # (1) a = b
+        assign = Assign.new(target, node.value).at(node)
+
+        # a || (1)
+        Or.new(target.clone, assign).at(node)
+      else
+        # (1) = a + b
+        call = Call.new(target, node.op, node.value).at(node)
+
+        # a = (1)
+        Assign.new(target.clone, call).at(node)
       end
     end
   end

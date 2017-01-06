@@ -4,15 +4,15 @@
 # Different numbers of arguments generates a `Time::Span` in different length.
 # Check all `#new` methods for details.
 #
-# ```crystal
-# Time::Span.new(10000)          # => 0:0:0.010000
+# ```
+# Time::Span.new(10000)          # => 00:00:00.001
 # Time::Span.new(10, 10, 10)     # => 10:10:10
 # Time::Span.new(10, 10, 10, 10) # => 10.10:10:10
 # ```
 #
 # Calculation between `Time` also returns a `Time::Span`.
 #
-# ```crystal
+# ```
 # span = Time.new(2015, 10, 10) - Time.new(2015, 9, 10)
 # span       # => 30.00:00:00
 # span.class # => Time::Span
@@ -20,7 +20,7 @@
 #
 # Inspection:
 #
-# ```crystal
+# ```
 # span = Time::Span.new(20, 10, 10)
 # span.hours   # => 20
 # span.minutes # => 10
@@ -29,7 +29,7 @@
 #
 # Calculation:
 #
-# ```crystal
+# ```
 # a = Time::Span.new(20, 10, 10)
 # b = Time::Span.new(10, 10, 10)
 # c = a - b # => 10:00:00
@@ -128,23 +128,23 @@ struct Time::Span
   end
 
   def days
-    (ticks / TicksPerDay).to_i32
+    (ticks.tdiv TicksPerDay).to_i32
   end
 
   def hours
-    (ticks.remainder(TicksPerDay) / TicksPerHour).to_i32
+    (ticks.remainder(TicksPerDay).tdiv TicksPerHour).to_i32
   end
 
   def minutes
-    (ticks.remainder(TicksPerHour) / TicksPerMinute).to_i32
+    (ticks.remainder(TicksPerHour).tdiv TicksPerMinute).to_i32
   end
 
   def seconds
-    (ticks.remainder(TicksPerMinute) / TicksPerSecond).to_i32
+    (ticks.remainder(TicksPerMinute).tdiv TicksPerSecond).to_i32
   end
 
   def milliseconds
-    (ticks.remainder(TicksPerSecond) / TicksPerMillisecond).to_i32
+    (ticks.remainder(TicksPerSecond).tdiv TicksPerMillisecond).to_i32
   end
 
   def total_weeks
@@ -224,6 +224,10 @@ struct Time::Span
     Span.new(ticks / number)
   end
 
+  def /(other : self)
+    ticks.to_f64 / other.ticks.to_f64
+  end
+
   def <=>(other : self)
     ticks <=> other.ticks
   end
@@ -277,6 +281,10 @@ struct Time::Span
     value = value * (tick_multiplicator / TicksPerMillisecond)
     val = (value < 0 ? (value - 0.5) : (value + 0.5)).to_i64 # round away from zero
     Span.new(val * TicksPerMillisecond)
+  end
+
+  def self.zero
+    new(0)
   end
 end
 

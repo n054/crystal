@@ -39,6 +39,42 @@ describe "URI" do
   assert { URI.parse("http://www.example.com?q=1").full_path.should eq("/?q=1") }
   assert { URI.parse("http://test.dev/a%3Ab").full_path.should eq("/a%3Ab") }
 
+  describe "normalize" do
+    it "removes dot notation from path" do
+      cases = {
+        "../bar"      => "bar",
+        "./bar"       => "bar",
+        ".././bar"    => "bar",
+        "/foo/./bar"  => "/foo/bar",
+        "/bar/./"     => "/bar/",
+        "/."          => "/",
+        "/bar/."      => "/bar/",
+        "/foo/../bar" => "/bar",
+        "/bar/../"    => "/",
+        "/.."         => "/",
+        "/bar/.."     => "/",
+        "/foo/bar/.." => "/foo/",
+        "."           => "",
+        ".."          => "",
+      }
+
+      cases.each do |input, expected|
+        uri = URI.parse(input)
+        uri = uri.normalize
+
+        uri.path.should eq(expected), "failed to remove dot notation from #{input}"
+      end
+    end
+  end
+
+  it "implements ==" do
+    URI.parse("http://example.com").should eq(URI.parse("http://example.com"))
+  end
+
+  it "implements hash" do
+    URI.parse("http://example.com").hash.should eq(URI.parse("http://example.com").hash)
+  end
+
   describe "userinfo" do
     assert { URI.parse("http://www.example.com").userinfo.should be_nil }
     assert { URI.parse("http://foo@www.example.com").userinfo.should eq("foo") }

@@ -2,11 +2,11 @@ module IO
   # An IO that wraps another IO, setting a limit for the number of bytes that can be read.
   #
   # ```
-  # io = MemoryIO.new "abcde"
+  # io = IO::Memory.new "abcde"
   # sized = IO::Sized.new(io, read_size: 3)
   #
   # sized.gets_to_end # => "abc"
-  # sized.gets_to_end # => nil
+  # sized.gets_to_end # => ""
   # io.gets_to_end    # => "de"
   # ```
   class Sized
@@ -28,7 +28,7 @@ module IO
       @read_remaining = read_size.to_u64
     end
 
-    def read(slice : Slice(UInt8))
+    def read(slice : Bytes)
       check_open
 
       count = {slice.size.to_u64, @read_remaining}.min
@@ -37,7 +37,35 @@ module IO
       bytes_read
     end
 
-    def write(slice : Slice(UInt8))
+    def read_byte
+      check_open
+
+      if @read_remaining > 0
+        byte = @io.read_byte
+        @read_remaining -= 1 if byte
+        byte
+      else
+        nil
+      end
+    end
+
+    def gets(delimiter : Char, limit : Int, chomp = false) : String?
+      check_open
+
+      return super if @encoding
+      return nil if @read_remaining == 0
+
+      # We can't pass chomp here, because it will remove part of the delimiter
+      # and then we won't know how much we consumed from @io, so we chomp later
+      string = @io.gets(delimiter, Math.min(limit, @read_remaining))
+      if string
+        @read_remaining -= string.bytesize
+        string = string.chomp(delimiter) if chomp
+      end
+      string
+    end
+
+    def write(slice : Bytes)
       raise IO::Error.new "Can't write to IO::Sized"
     end
 

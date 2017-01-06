@@ -20,7 +20,7 @@ class CSV::Parser
   end
 
   # Yields each of the remaining rows as an `Array(String)`.
-  def each_row
+  def each_row : Nil
     while row = next_row
       yield row
     end
@@ -71,8 +71,7 @@ class CSV::Parser
     @lexer.rewind
   end
 
-  # :nodoc:
-  struct RowIterator
+  private struct RowIterator
     include Iterator(Array(String))
 
     @parser : Parser

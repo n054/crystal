@@ -3,8 +3,7 @@
 {% end %}
 
 module HTTP
-  # :nodoc:
-  DATE_PATTERNS = {"%a, %d %b %Y %H:%M:%S %z", "%A, %d-%b-%y %H:%M:%S %z", "%a %b %e %H:%M:%S %Y"}
+  private DATE_PATTERNS = {"%a, %d %b %Y %H:%M:%S %z", "%A, %d-%b-%y %H:%M:%S %z", "%a %b %e %H:%M:%S %Y"}
 
   # :nodoc:
   enum BodyType
@@ -18,7 +17,7 @@ module HTTP
     headers = Headers.new
 
     while line = io.gets
-      if line == "\r\n" || line == "\n"
+      if line.empty?
         body = nil
         if body_type.prohibited?
           body = nil
@@ -71,8 +70,11 @@ module HTTP
   def self.parse_header(line)
     # This is basically
     #
-    #     name, value = line.split ':', 2
-    #     {name, value.lstrip}
+    # ```
+    # line = "Server: nginx"
+    # name, value = line.split ':', 2
+    # {name, value.lstrip} # => {"Server", "nginx"}
+    # ```
     #
     # except that it's faster because we only create 2 strings
     # instead of 3 (two from the split and one for the lstrip),
@@ -87,7 +89,7 @@ module HTTP
 
     # Get where the header value starts (skip space)
     middle_index = colon_index + 1
-    while middle_index < bytesize && cstr[middle_index].unsafe_chr.whitespace?
+    while middle_index < bytesize && cstr[middle_index].unsafe_chr.ascii_whitespace?
       middle_index += 1
     end
 
@@ -108,46 +110,58 @@ module HTTP
 
   # :nodoc:
   def self.serialize_headers_and_body(io, headers, body, body_io, version)
-    # prepare either chunked response headers if protocol supports it
-    # or consume the io to get the Content-Length header
-    unless body
-      if body_io
-        if Client::Response.supports_chunked?(version)
-          headers["Transfer-Encoding"] = "chunked"
-          body = nil
-        else
-          body = body_io.gets_to_end
-          body_io = nil
-        end
-      end
-    end
-
     if body
-      headers["Content-Length"] = body.bytesize.to_s
+      serialize_headers_and_string_body(io, headers, body)
+    elsif body_io
+      content_length = content_length(headers)
+      if content_length
+        serialize_headers(io, headers)
+        copied = IO.copy(body_io, io)
+        if copied != content_length
+          raise ArgumentError.new("Content-Length header is #{content_length} but body had #{copied} bytes")
+        end
+      elsif Client::Response.supports_chunked?(version)
+        headers["Transfer-Encoding"] = "chunked"
+        serialize_headers(io, headers)
+        serialize_chunked_body(io, body_io)
+      else
+        body = body_io.gets_to_end
+        serialize_headers_and_string_body(io, headers, body)
+      end
+    else
+      serialize_headers(io, headers)
     end
+  end
 
+  def self.serialize_headers_and_string_body(io, headers, body)
+    headers["Content-Length"] = body.bytesize.to_s
+    serialize_headers(io, headers)
+    io << body
+  end
+
+  def self.serialize_headers(io, headers)
     headers.each do |name, values|
       values.each do |value|
         io << name << ": " << value << "\r\n"
       end
     end
-
     io << "\r\n"
+  end
 
-    if body
-      io << body
+  def self.serialize_chunked_body(io, body)
+    buf = uninitialized UInt8[8192]
+    while (buf_length = body.read(buf.to_slice)) > 0
+      buf_length.to_s(16, io)
+      io << "\r\n"
+      io.write(buf.to_slice[0, buf_length])
+      io << "\r\n"
     end
+    io << "0\r\n\r\n"
+  end
 
-    if body_io
-      buf = uninitialized UInt8[8192]
-      while (buf_length = body_io.read(buf.to_slice)) > 0
-        buf_length.to_s(16, io)
-        io << "\r\n"
-        io.write(buf.to_slice[0, buf_length])
-        io << "\r\n"
-      end
-      io << "0\r\n\r\n"
-    end
+  # :nodoc:
+  def self.content_length(headers)
+    headers["Content-Length"]?.try &.to_u64?
   end
 
   # :nodoc:

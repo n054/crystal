@@ -12,7 +12,7 @@
 #                - qux
 #                - fox
 #          END
-# data["foo"]["bar"]["baz"][1].as_s # => "qux"
+# data["foo"]["bar"]["baz"][0].as_s # => "qux"
 # data["foo"]["bar"]["baz"].as_a    # => ["qux", "fox"]
 # ```
 #
@@ -168,6 +168,11 @@ struct YAML::Any
   # :nodoc:
   def to_s(io)
     @raw.to_s(io)
+  end
+
+  # :nodoc:
+  def pretty_print(pp)
+    @raw.pretty_print(pp)
   end
 
   # Returns true if both `self` and *other*'s raw object are equal.

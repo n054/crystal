@@ -59,7 +59,7 @@ class CSV
   DEFAULT_SEPARATOR  = ','
   DEFAULT_QUOTE_CHAR = '"'
 
-  # Parses a CSV or IO into an array.
+  # Parses a CSV or `IO` into an array.
   # takes optional *separator* and *quote_char* arguments for defining
   # non-standard csv cell separators and quote characters
   #
@@ -113,7 +113,7 @@ class CSV
   #   csv.row "one", "two"
   #   csv.row "three"
   # end
-  # result # => "one,two\nthree"
+  # result # => "one,two\nthree\n"
   # ```
   def self.build : String
     String.build do |io|
@@ -125,13 +125,13 @@ class CSV
   # that writes to the given IO.
   #
   # ```
-  # io = MemoryIO.new
+  # io = IO::Memory.new
   # io.puts "HEADER"
   # CSV.build(io) do |csv|
   #   csv.row "one", "two"
   #   csv.row "three"
   # end
-  # io.to_s # => "HEADER\none,two\nthree"
+  # io.to_s # => "HEADER\none,two\nthree\n"
   # ```
   def self.build(io : IO)
     builder = Builder.new(io)
@@ -188,7 +188,7 @@ class CSV
   end
 
   # Invokes the block once for each row in this CSV, yielding `self`.
-  def each
+  def each : Nil
     while self.next
       yield self
     end

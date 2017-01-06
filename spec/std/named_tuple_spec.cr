@@ -95,6 +95,44 @@ describe "NamedTuple" do
     typeof(val).should eq(Int32 | Char | Nil)
   end
 
+  it "does [] with string" do
+    tup = {a: 1, b: 'a'}
+
+    key = "a"
+    val = tup[key]
+    val.should eq(1)
+    typeof(val).should eq(Int32 | Char)
+
+    key = "b"
+    val = tup[key]
+    val.should eq('a')
+    typeof(val).should eq(Int32 | Char)
+
+    expect_raises(KeyError) do
+      key = "c"
+      tup[key]
+    end
+  end
+
+  it "does []? with string" do
+    tup = {a: 1, b: 'a'}
+
+    key = "a"
+    val = tup[key]?
+    val.should eq(1)
+    typeof(val).should eq(Int32 | Char | Nil)
+
+    key = "b"
+    val = tup[key]?
+    val.should eq('a')
+    typeof(val).should eq(Int32 | Char | Nil)
+
+    key = "c"
+    val = tup[key]?
+    val.should be_nil
+    typeof(val).should eq(Int32 | Char | Nil)
+  end
+
   it "computes a hash value" do
     tup1 = {a: 1, b: 'a'}
     tup1.hash.should_not eq(0)
@@ -116,7 +154,7 @@ describe "NamedTuple" do
         value.should eq("hello")
       end
       i += 1
-    end
+    end.should be_nil
     i.should eq(2)
   end
 
@@ -131,7 +169,7 @@ describe "NamedTuple" do
         key.should eq(:b)
       end
       i += 1
-    end
+    end.should be_nil
     i.should eq(2)
   end
 
@@ -146,7 +184,7 @@ describe "NamedTuple" do
         value.should eq("hello")
       end
       i += 1
-    end
+    end.should be_nil
     i.should eq(2)
   end
 
@@ -165,15 +203,22 @@ describe "NamedTuple" do
         index.should eq(1)
       end
       i += 1
-    end
+    end.should be_nil
     i.should eq(2)
   end
 
-  it "does has_key?" do
+  it "does has_key? with symbol" do
     tup = {a: 1, b: 'a'}
     tup.has_key?(:a).should be_true
     tup.has_key?(:b).should be_true
     tup.has_key?(:c).should be_false
+  end
+
+  it "does has_key? with string" do
+    tup = {a: 1, b: 'a'}
+    tup.has_key?("a").should be_true
+    tup.has_key?("b").should be_true
+    tup.has_key?("c").should be_false
   end
 
   it "does empty" do

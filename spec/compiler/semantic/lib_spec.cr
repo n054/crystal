@@ -424,11 +424,13 @@ describe "Semantic: lib" do
       )) { int64 }
   end
 
-  it "correctly attached link flags if there's an ifdef" do
+  it "correctly attached link flags if there's a macro if" do
     result = semantic(%(
       @[Link("SDL")]
       @[Link("SDLMain")]
-      @[Link(framework: "Cocoa")] ifdef some_flag
+      {% if flag?(:some_flag) %}
+        @[Link(framework: "Cocoa")]
+      {% end %}
       lib LibSDL
         fun init = SDL_Init(flags : UInt32) : Int32
       end
@@ -480,7 +482,7 @@ describe "Semantic: lib" do
       def LibC.foo
       end
       ),
-      "can't define 'def' for lib"
+      "can't define method in lib LibC"
   end
 
   it "reopens lib and adds more link attributes" do
@@ -849,5 +851,80 @@ describe "Semantic: lib" do
 
       LibFoo::Foo.new.x
       )) { int32 }
+  end
+
+  it "errors if defining incompatible funs with the same name in the same lib (#3045)" do
+    assert_error %(
+      lib LibFoo
+        fun foo1 = foo
+        fun foo2 = foo(x : Int32)
+      end
+      ),
+      "fun redefinition with different signature"
+  end
+
+  it "errors if defining incompatible funs with the same name in different libs (#3045)" do
+    assert_error %(
+      lib LibFoo1
+        fun foo1 = foo
+      end
+
+      lib LibFoo2
+        fun foo2 = foo(x : Int32)
+      end
+      ),
+      "fun redefinition with different signature"
+  end
+
+  it "specifies a call convention" do
+    result = semantic(%(
+      lib LibFoo
+        @[CallConvention("X86_StdCall")]
+        fun foo : Int32
+      end
+      ))
+    foo = result.program.types["LibFoo"].lookup_first_def("foo", nil).as(External)
+    foo.call_convention.should eq(LLVM::CallConvention::X86_StdCall)
+  end
+
+  it "specifies a call convention to a lib" do
+    result = semantic(%(
+      @[CallConvention("X86_StdCall")]
+      lib LibFoo
+        fun foo : Int32
+      end
+      ))
+    foo = result.program.types["LibFoo"].lookup_first_def("foo", nil).as(External)
+    foo.call_convention.should eq(LLVM::CallConvention::X86_StdCall)
+  end
+
+  it "errors if wrong number of arguments for CallConvention" do
+    assert_error %(
+      lib LibFoo
+        @[CallConvention("X86_StdCall", "bar")]
+        fun foo : Int32
+      end
+      ),
+      "wrong number of arguments for attribute CallConvention (given 2, expected 1)"
+  end
+
+  it "errors if CallConvention argument is not a string" do
+    assert_error %(
+      lib LibFoo
+        @[CallConvention(1)]
+        fun foo : Int32
+      end
+      ),
+      "argument to CallConvention must be a string"
+  end
+
+  it "errors if CallConvention argument is not a valid string" do
+    assert_error %(
+      lib LibFoo
+        @[CallConvention("foo")]
+        fun foo : Int32
+      end
+      ),
+      "invalid call convention. Valid values are #{LLVM::CallConvention.values.join ", "}"
   end
 end

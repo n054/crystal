@@ -5,11 +5,11 @@ module IO
   # This is useful for exposing part of an underlying stream to a client.
   #
   # ```
-  # io = MemoryIO.new "abc||123"
+  # io = IO::Memory.new "abc||123"
   # delimited = IO::Delimited.new(io, read_delimiter: "||")
   #
   # delimited.gets_to_end # => "abc"
-  # delimited.gets_to_end # => nil
+  # delimited.gets_to_end # => ""
   # io.gets_to_end        # => "123"
   # ```
   class Delimited
@@ -42,10 +42,10 @@ module IO
       # The buffer where we do all our work.
       @delimiter_buffer = Bytes.new(@read_delimiter.size)
       # Slice inside delimiter buffer where bytes waiting to be read are stored.
-      @active_delimiter_buffer = Bytes.new(Pointer(UInt8).null, 0)
+      @active_delimiter_buffer = Bytes.empty
     end
 
-    def read(slice : Slice(UInt8))
+    def read(slice : Bytes)
       check_open
       return 0 if @finished
 
@@ -110,7 +110,7 @@ module IO
       read_bytes
     end
 
-    def write(slice : Slice(UInt8))
+    def write(slice : Bytes)
       raise IO::Error.new "Can't write to IO::Delimited"
     end
 

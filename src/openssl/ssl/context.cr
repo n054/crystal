@@ -58,8 +58,10 @@ abstract class OpenSSL::SSL::Context
     # protocols but disable the deprecated SSLv2 and SSLv3 protocols:
     #
     # ```
+    # require "openssl"
+    #
     # context = OpenSSL::SSL::Context::Client.new
-    # context.options = OpenSSL::SSL::Options::NO_SSLV2 | OpenSSL::SSL::Options::NO_SSLV3
+    # context.add_options(OpenSSL::SSL::Options::NO_SSLV2 | OpenSSL::SSL::Options::NO_SSLV3)
     # ```
     def initialize(method : LibSSL::SSLMethod = LibSSL.sslv23_method)
       super(method)
@@ -112,7 +114,7 @@ abstract class OpenSSL::SSL::Context
     #
     # ```
     # context = OpenSSL::SSL::Context::Server.new
-    # context.options = OpenSSL::SSL::Options::NO_SSLV2 | OpenSSL::SSL::Options::NO_SSLV3
+    # context.add_options(OpenSSL::SSL::Options::NO_SSLV2 | OpenSSL::SSL::Options::NO_SSLV3)
     # ```
     def initialize(method : LibSSL::SSLMethod = LibSSL.sslv23_method)
       super(method)
@@ -247,11 +249,12 @@ abstract class OpenSSL::SSL::Context
   # Adds options to the TLS context.
   #
   # Example:
+  #
   # ```
   # context.add_options(
-  #   OpenSSL::SSL::Options::ALL |        # various workarounds
-  #     OpenSSL::SSL::Options::NO_SSLV2 | # disable overly deprecated SSLv2
-  #     OpenSSL::SSL::Options::NO_SSLV3   # disable deprecated SSLv3
+  #   OpenSSL::SSL::Options::ALL |      # various workarounds
+  #   OpenSSL::SSL::Options::NO_SSLV2 | # disable overly deprecated SSLv2
+  #   OpenSSL::SSL::Options::NO_SSLV3   # disable deprecated SSLv3
   # )
   # ```
   def add_options(options : OpenSSL::SSL::Options)
@@ -262,7 +265,7 @@ abstract class OpenSSL::SSL::Context
   #
   # Example:
   # ```
-  # context.remove_options(OpenSSL::SSL::NO_SSLV3)
+  # context.remove_options(OpenSSL::SSL::Options::NO_SSLV3)
   # ```
   def remove_options(options : OpenSSL::SSL::Options)
     OpenSSL::SSL::Options.new LibSSL.ssl_ctx_ctrl(@handle, LibSSL::SSL_CTRL_CLEAR_OPTIONS, options, nil)
@@ -291,15 +294,15 @@ abstract class OpenSSL::SSL::Context
   # context.alpn_protocol = "h2"
   # ```
   def alpn_protocol=(protocol : String)
-    proto = Slice(UInt8).new(protocol.bytesize + 1)
+    proto = Bytes.new(protocol.bytesize + 1)
     proto[0] = protocol.bytesize.to_u8
     protocol.to_slice.copy_to(proto.to_unsafe + 1, protocol.bytesize)
     self.alpn_protocol = proto
   end
 
-  private def alpn_protocol=(protocol : Slice(UInt8))
+  private def alpn_protocol=(protocol : Bytes)
     alpn_cb = ->(ssl : LibSSL::SSL, o : LibC::Char**, olen : LibC::Char*, i : LibC::Char*, ilen : LibC::Int, data : Void*) {
-      proto = Box(Slice(UInt8)).unbox(data)
+      proto = Box(Bytes).unbox(data)
       ret = LibSSL.ssl_select_next_proto(o, olen, proto, 2, i, ilen)
       if ret != LibSSL::OPENSSL_NPN_NEGOTIATED
         LibSSL::SSL_TLSEXT_ERR_NOACK

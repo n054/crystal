@@ -85,10 +85,10 @@ describe "Semantic: alias" do
 
   it "errors if alias already defined" do
     assert_error %(
-      alias A = String
-      alias A = Int32
+      alias Alias = String
+      alias Alias = Int32
       ),
-      "alias A is already defined"
+      "alias Alias is already defined"
   end
 
   it "errors if alias is already defined as another type" do
@@ -100,18 +100,18 @@ describe "Semantic: alias" do
 
   it "errors if defining infinite recursive alias" do
     assert_error %(
-      alias A = A
-      A
+      alias Alias = Alias
+      Alias
       ),
-      "infinite recursive definition of alias A"
+      "infinite recursive definition of alias Alias"
   end
 
   it "errors if defining infinite recursive alias in union" do
     assert_error %(
-      alias A = Int32 | A
-      A
+      alias Alias = Int32 | Alias
+      Alias
       ),
-      "infinite recursive definition of alias A"
+      "infinite recursive definition of alias Alias"
   end
 
   it "allows using generic type of recursive alias as restriction (#488)" do
@@ -132,12 +132,12 @@ describe "Semantic: alias" do
 
   it "resolves type through alias (#563)" do
     assert_type(%(
-      module A
+      module Moo
         Foo = 1
       end
 
-      alias B = A
-      B::Foo
+      alias Alias = Moo
+      Alias::Foo
       )) { int32 }
   end
 
@@ -223,7 +223,7 @@ describe "Semantic: alias" do
     assert_error %(
       alias Foo = typeof(1)
       ),
-      "can't use typeof inside alias declaration"
+      "can't use 'typeof' here"
   end
 
   it "can use .class in alias (#2835)" do
@@ -231,5 +231,37 @@ describe "Semantic: alias" do
       alias Foo = Int32.class | String.class
       Foo
       )) { union_of(int32.metaclass, string.metaclass).metaclass }
+  end
+
+  it "uses constant in alias (#3259)" do
+    assert_type(%(
+      CONST = 10
+      alias Alias = UInt8[CONST]
+      Alias
+      )) { static_array_of(uint8, 10).metaclass }
+  end
+
+  it "uses constant in alias with math (#3259)" do
+    assert_type(%(
+      CONST = 2*3 + 4
+      alias Alias = UInt8[CONST]
+      Alias
+      )) { static_array_of(uint8, 10).metaclass }
+  end
+
+  it "looks up alias for macro resolution (#3548)" do
+    assert_type(%(
+      class Foo
+        class Bar
+          def self.baz
+            1
+          end
+        end
+      end
+
+      alias Baz = Foo
+
+      Baz::Bar.baz
+      )) { int32 }
   end
 end

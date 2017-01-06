@@ -20,9 +20,7 @@ module Crystal
   # can also include other modules (this happens when you do `include Module`
   # at the top-level).
   class Program < NonGenericModuleType
-    include DefContainer
     include DefInstanceContainer
-    include MatchesLookup
 
     # All symbols (:foo, :bar) found in the program
     getter symbols = Set(String).new
@@ -102,12 +100,21 @@ module Crystal
     # The constant for ARGV_UNSAFE
     getter! argv : Const
 
+    # Default standard output to use in a program, while compiling.
+    property stdout : IO = STDOUT
+
+    # Whether to show error trace
+    property? show_error_trace = false
+
+    # The main filename of this program
+    property filename : String?
+
     def initialize
       super(self, self, "main")
 
       # Every crystal program comes with some predefined types that we initialize here,
       # like Object, Value, Reference, etc.
-      types = @types = {} of String => Type
+      types = self.types
 
       types["Object"] = object = @object = NonGenericClassType.new self, self, "Object", nil
       object.allowed_in_generics = false
@@ -122,8 +129,8 @@ module Crystal
       types["Number"] = number = @number = NonGenericClassType.new self, self, "Number", value
       abstract_value_type(number)
 
-      types["NoReturn"] = @no_return = NoReturnType.new self
-      types["Void"] = @void = VoidType.new self
+      types["NoReturn"] = @no_return = NoReturnType.new self, self, "NoReturn"
+      types["Void"] = @void = VoidType.new self, self, "Void"
       types["Nil"] = nil_t = @nil = NilType.new self, self, "Nil", value, 1
       types["Bool"] = @bool = BoolType.new self, self, "Bool", value, 1
       types["Char"] = @char = CharType.new self, self, "Char", value, 4
@@ -159,13 +166,13 @@ module Crystal
 
       types["StaticArray"] = static_array = @static_array = StaticArrayType.new self, self, "StaticArray", value, ["T", "N"]
       static_array.struct = true
-      static_array.declare_instance_var("@buffer", Path.new("T"))
+      static_array.declare_instance_var("@buffer", static_array.type_parameter("T"))
       static_array.allowed_in_generics = false
 
       types["String"] = string = @string = NonGenericClassType.new self, self, "String", reference
-      string.declare_instance_var("@bytesize", @int32)
-      string.declare_instance_var("@length", @int32)
-      string.declare_instance_var("@c", @uint8)
+      string.declare_instance_var("@bytesize", int32)
+      string.declare_instance_var("@length", int32)
+      string.declare_instance_var("@c", uint8)
 
       types["Class"] = klass = @class = MetaclassType.new(self, object, value, "Class")
       object.metaclass = klass
@@ -190,15 +197,15 @@ module Crystal
       types["Union"] = @union = GenericUnionType.new self, self, "Union", value, ["T"]
       types["Crystal"] = @crystal = NonGenericModuleType.new self, self, "Crystal"
 
-      types["ARGC_UNSAFE"] = @argc = argc_unsafe = Const.new self, self, "ARGC_UNSAFE", Primitive.new(:argc, int32)
-      types["ARGV_UNSAFE"] = @argv = argv_unsafe = Const.new self, self, "ARGV_UNSAFE", Primitive.new(:argv, pointer_of(pointer_of(uint8)))
+      types["ARGC_UNSAFE"] = @argc = argc_unsafe = Const.new self, self, "ARGC_UNSAFE", Primitive.new("argc", int32)
+      types["ARGV_UNSAFE"] = @argv = argv_unsafe = Const.new self, self, "ARGV_UNSAFE", Primitive.new("argv", pointer_of(pointer_of(uint8)))
 
       # Make sure to initialize ARGC and ARGV as soon as the program starts
       class_var_and_const_initializers << argc_unsafe
       class_var_and_const_initializers << argv_unsafe
 
       types["GC"] = gc = NonGenericModuleType.new self, self, "GC"
-      gc.metaclass.add_def Def.new("add_finalizer", [Arg.new("object")], Nop.new)
+      gc.metaclass.as(ModuleType).add_def Def.new("add_finalizer", [Arg.new("object")], Nop.new)
 
       define_crystal_constants
     end
@@ -209,9 +216,6 @@ module Crystal
 
     # Returns a `CrystalPath` for this program.
     getter(crystal_path) { CrystalPath.new(target_triple: target_machine.triple) }
-
-    # Returns a `MacroExpander` to expand macro code into crystal code.
-    getter(macro_expander) { MacroExpander.new self }
 
     # Returns a `Var` that has `Nil` as a type.
     # This variable is bound to other nodes in the semantic phase for things
@@ -251,7 +255,7 @@ module Crystal
 
     setter target_machine : LLVM::TargetMachine?
 
-    getter(target_machine) { TargetMachine.create(LLVM.default_target_triple, "", false) }
+    getter(target_machine) { TargetMachine.create(LLVM.default_target_triple) }
 
     # Returns the `Type` for `Array(type)`
     def array_of(type)
@@ -427,6 +431,22 @@ module Crystal
       @hash_type.not_nil!
     end
 
+    def type_from_literal_kind(kind)
+      case kind
+      when :i8  then int8
+      when :i16 then int16
+      when :i32 then int32
+      when :i64 then int64
+      when :u8  then uint8
+      when :u16 then uint16
+      when :u32 then uint32
+      when :u64 then uint64
+      when :f32 then float32
+      when :f64 then float64
+      else           raise "Invalid node kind: #{kind}"
+      end
+    end
+
     # Returns the `IntegerType` that matches the given Int value
     def int?(int)
       case int
@@ -478,16 +498,8 @@ module Crystal
 
     # Next come overrides for the type system
 
-    def program
-      self
-    end
-
     def metaclass
       self
-    end
-
-    def passed_as_self?
-      false
     end
 
     def type_desc

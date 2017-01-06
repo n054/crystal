@@ -19,7 +19,7 @@ end
 # the value to deserialize.
 #
 # ```
-# Int32.from_json(%({"main": 1}), root: "main").should eq(1)
+# Int32.from_json(%({"main": 1}), root: "main") # => 1
 # ```
 def Object.from_json(string_or_io, root : String) : self
   parser = JSON::PullParser.new(string_or_io)
@@ -224,6 +224,10 @@ def Union.new(pull : JSON::PullParser)
     end
   {% end %}
   raise JSON::ParseException.new("couldn't parse #{self} from #{string}", 0, 0)
+end
+
+def Time.new(pull : JSON::PullParser)
+  Time::Format::ISO_8601_DATE_TIME.parse(pull.read_string)
 end
 
 struct Time::Format

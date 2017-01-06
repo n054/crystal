@@ -231,7 +231,7 @@ describe "Semantic: macro" do
       ), "wrong number of arguments for macro 'foo' (given 1, expected 0)"
   end
 
-  it "executs raise inside macro" do
+  it "executes raise inside macro" do
     assert_error %(
       macro foo
         {{ raise "OH NO" }}
@@ -466,7 +466,7 @@ describe "Semantic: macro" do
       end
 
       me
-      )) { symbol }
+      )) { nilable symbol }
   end
 
   it "errors if declares macro inside if" do
@@ -547,14 +547,16 @@ describe "Semantic: macro" do
       )) { int32 }
   end
 
-  it "errors if using private on non-top-level macro" do
+  it "errors if applying protected modifier to macro" do
     assert_error %(
       class Foo
-        private macro bar
+        protected macro foo
+          1
         end
       end
-      ),
-      "private macros can only be declared at the top-level"
+
+      Foo.foo
+    ), "can only use 'private' for macros"
   end
 
   it "expands macro with break inside while (#1852)" do
@@ -906,6 +908,56 @@ describe "Semantic: macro" do
       end
 
       ->{ foo }.call
+      )) { int32 }
+  end
+
+  it "finds var in proc for macros" do
+    assert_type(%(
+      macro foo(x)
+        {{x}}
+      end
+
+      ->(x : Int32) { foo(x) }.call(1)
+      )) { int32 }
+  end
+
+  it "applies visibility modifier only to first level" do
+    assert_type(%(
+      macro foo
+        class Foo
+          def self.foo
+            1
+          end
+        end
+      end
+
+      private foo
+
+      Foo.foo
+      ), inject_primitives: false) { int32 }
+  end
+
+  it "gives correct error when method is invoked but macro exists at the same scope" do
+    assert_error %(
+      macro foo(x)
+      end
+
+      class Foo
+      end
+
+      Foo.new.foo
+      ),
+      "undefined method 'foo'"
+  end
+
+  it "uses uninitialized variable with macros" do
+    assert_type(%(
+      macro foo(x)
+        {{x}}
+      end
+
+      a = uninitialized Int32
+      foo(a)
       )) { int32 }
   end
 end

@@ -14,7 +14,10 @@ private def rootdir
 end
 
 private def home
-  ENV["HOME"]
+  home = ENV["HOME"]
+  return home if home == "/"
+
+  home.chomp('/')
 end
 
 private def it_raises_on_null_byte(operation, &block)
@@ -37,8 +40,23 @@ describe "File" do
     str.should eq("Hello World\n" * 20)
   end
 
+  {% if flag?(:linux) %}
+    it "reads entire file from proc virtual filesystem" do
+      str1 = File.open "/proc/self/cmdline", &.gets_to_end
+      str2 = File.read "/proc/self/cmdline"
+      str2.empty?.should be_false
+      str2.should eq(str1)
+    end
+  {% end %}
+
   it "reads lines from file" do
     lines = File.read_lines "#{__DIR__}/data/test_file.txt"
+    lines.size.should eq(20)
+    lines.first.should eq("Hello World")
+  end
+
+  it "reads lines from file with chomp = false" do
+    lines = File.read_lines "#{__DIR__}/data/test_file.txt", chomp: false
     lines.size.should eq(20)
     lines.first.should eq("Hello World\n")
   end
@@ -46,6 +64,17 @@ describe "File" do
   it "reads lines from file with each" do
     idx = 0
     File.each_line("#{__DIR__}/data/test_file.txt") do |line|
+      if idx == 0
+        line.should eq("Hello World")
+      end
+      idx += 1
+    end
+    idx.should eq(20)
+  end
+
+  it "reads lines from file with each, chomp = false" do
+    idx = 0
+    File.each_line("#{__DIR__}/data/test_file.txt", chomp: false) do |line|
       if idx == 0
         line.should eq("Hello World\n")
       end
@@ -58,11 +87,39 @@ describe "File" do
     idx = 0
     File.each_line("#{__DIR__}/data/test_file.txt").each do |line|
       if idx == 0
+        line.should eq("Hello World")
+      end
+      idx += 1
+    end
+    idx.should eq(20)
+  end
+
+  it "reads lines from file with each as iterator, chomp = false" do
+    idx = 0
+    File.each_line("#{__DIR__}/data/test_file.txt", chomp: false).each do |line|
+      if idx == 0
         line.should eq("Hello World\n")
       end
       idx += 1
     end
     idx.should eq(20)
+  end
+
+  describe "empty?" do
+    it "gives true when file is empty" do
+      File.empty?("#{__DIR__}/data/blank_test_file.txt").should be_true
+    end
+
+    it "gives false when file is not empty" do
+      File.empty?("#{__DIR__}/data/test_file.txt").should be_false
+    end
+
+    it "raises an error when the file does not exist" do
+      filename = "#{__DIR__}/data/non_existing_file.txt"
+      expect_raises Errno do
+        File.empty?(filename)
+      end
+    end
   end
 
   describe "exists?" do
@@ -182,6 +239,56 @@ describe "File" do
     File.join(["foo", "bar", "baz"]).should eq("foo/bar/baz")
     File.join(["foo", "//bar//", "baz///"]).should eq("foo//bar//baz///")
     File.join(["/foo/", "/bar/", "/baz/"]).should eq("/foo/bar/baz/")
+  end
+
+  assert "chown" do
+    # changing owners requires special privileges, so we test that method calls do compile
+    typeof(File.chown("/tmp/test"))
+    typeof(File.chown("/tmp/test", uid: 1001, gid: 100, follow_symlinks: true))
+  end
+
+  describe "chmod" do
+    it "changes file permissions" do
+      path = "#{__DIR__}/data/chmod.txt"
+      begin
+        File.write(path, "")
+        File.chmod(path, 0o775)
+        File.stat(path).perm.should eq(0o775)
+      ensure
+        File.delete(path) if File.exists?(path)
+      end
+    end
+
+    it "changes dir permissions" do
+      path = "#{__DIR__}/data/chmod"
+      begin
+        Dir.mkdir(path, 0o775)
+        File.chmod(path, 0o664)
+        File.stat(path).perm.should eq(0o664)
+      ensure
+        Dir.rmdir(path) if Dir.exists?(path)
+      end
+    end
+
+    it "follows symlinks" do
+      path = "#{__DIR__}/data/chmod_destination.txt"
+      link = "#{__DIR__}/data/chmod.txt"
+      begin
+        File.write(path, "")
+        File.symlink(path, link)
+        File.chmod(link, 0o775)
+        File.stat(link).perm.should eq(0o775)
+      ensure
+        File.delete(path) if File.exists?(path)
+        File.delete(link) if File.symlink?(link)
+      end
+    end
+
+    it "raises when destination doesn't exist" do
+      expect_raises(Errno) do
+        File.chmod("#{__DIR__}/data/unknown_chmod_path.txt", 0o664)
+      end
+    end
   end
 
   it "gets stat for this file" do
@@ -363,6 +470,38 @@ describe "File" do
       File.expand_path("~", "/tmp/gumby/ddd").should eq(home)
       File.expand_path("~/a", "/tmp/gumby/ddd").should eq(File.join([home, "a"]))
     end
+
+    it "converts a pathname to an absolute pathname, using ~ (home) as base (trailing /)" do
+      prev_home = home
+      begin
+        ENV["HOME"] = __DIR__ + "/"
+        File.expand_path("~/").should eq(home)
+        File.expand_path("~/..badfilename").should eq(File.join(home, "..badfilename"))
+        File.expand_path("..").should eq("/#{base.split("/")[0...-1].join("/")}".gsub(%r{\A//}, "/"))
+        File.expand_path("~/a", "~/b").should eq(File.join(home, "a"))
+        File.expand_path("~").should eq(home)
+        File.expand_path("~", "/tmp/gumby/ddd").should eq(home)
+        File.expand_path("~/a", "/tmp/gumby/ddd").should eq(File.join([home, "a"]))
+      ensure
+        ENV["HOME"] = prev_home
+      end
+    end
+
+    it "converts a pathname to an absolute pathname, using ~ (home) as base (HOME=/)" do
+      prev_home = home
+      begin
+        ENV["HOME"] = "/"
+        File.expand_path("~/").should eq(home)
+        File.expand_path("~/..badfilename").should eq(File.join(home, "..badfilename"))
+        File.expand_path("..").should eq("/#{base.split("/")[0...-1].join("/")}".gsub(%r{\A//}, "/"))
+        File.expand_path("~/a", "~/b").should eq(File.join(home, "a"))
+        File.expand_path("~").should eq(home)
+        File.expand_path("~", "/tmp/gumby/ddd").should eq(home)
+        File.expand_path("~/a", "/tmp/gumby/ddd").should eq(File.join([home, "a"]))
+      ensure
+        ENV["HOME"] = prev_home
+      end
+    end
   end
 
   describe "real_path" do
@@ -396,6 +535,22 @@ describe "File" do
       filename = "#{__DIR__}/data/temp_write.txt"
       File.write(filename, "hello")
       File.read(filename).should eq("hello")
+      File.delete(filename)
+    end
+
+    it "writes bytes" do
+      filename = "#{__DIR__}/data/temp_write.txt"
+      File.write(filename, "hello".to_slice)
+      File.read(filename).should eq("hello")
+      File.delete(filename)
+    end
+
+    it "writes io" do
+      filename = "#{__DIR__}/data/temp_write.txt"
+      File.open("#{__DIR__}/data/test_file.txt") do |file|
+        File.write(filename, file)
+      end
+      File.read(filename).should eq(File.read("#{__DIR__}/data/test_file.txt"))
       File.delete(filename)
     end
 

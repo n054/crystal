@@ -1,4 +1,7 @@
 @[Link("readline")]
+{% if flag?(:openbsd) %}
+@[Link("termcap")]
+{% end %}
 lib LibReadline
   alias Int = LibC::Int
 
@@ -104,7 +107,7 @@ module Readline
     r1.pos
   end
 
-  # :nodoc :
+  # :nodoc:
   def common_prefix_bytesize(strings : Array)
     str1 = strings[0]
     low = str1.bytesize

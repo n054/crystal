@@ -38,7 +38,7 @@ class HTTP::WebSocket::Protocol
     @mask = uninitialized UInt8[4]
     @mask_offset = 0
     @opcode = Opcode::CONTINUATION
-    @remaining = 0
+    @remaining = 0_u64
     @masked = !!masked
   end
 
@@ -47,11 +47,11 @@ class HTTP::WebSocket::Protocol
 
     def initialize(@websocket : Protocol, binary, frame_size)
       @opcode = binary ? Opcode::BINARY : Opcode::TEXT
-      @buffer = Slice(UInt8).new(frame_size)
+      @buffer = Bytes.new(frame_size)
       @pos = 0
     end
 
-    def write(slice : Slice(UInt8))
+    def write(slice : Bytes)
       count = Math.min(@buffer.size - @pos, slice.size)
       (@buffer + @pos).copy_from(slice.pointer(count), count)
       @pos += count
@@ -67,7 +67,7 @@ class HTTP::WebSocket::Protocol
       nil
     end
 
-    def read(slice : Slice(UInt8))
+    def read(slice : Bytes)
       raise "this IO is write-only"
     end
 
@@ -87,7 +87,7 @@ class HTTP::WebSocket::Protocol
     send(data.to_slice, Opcode::TEXT)
   end
 
-  def send(data : Slice(UInt8))
+  def send(data : Bytes)
     send(data, Opcode::BINARY)
   end
 
@@ -97,13 +97,13 @@ class HTTP::WebSocket::Protocol
     stream_io.flush
   end
 
-  def send(data : Slice(UInt8), opcode : Opcode, flags = Flags::FINAL, flush = true)
+  def send(data : Bytes, opcode : Opcode, flags = Flags::FINAL, flush = true)
     write_header(data.size, opcode, flags)
     write_payload(data)
     @io.flush if flush
   end
 
-  def receive(buffer : Slice(UInt8))
+  def receive(buffer : Bytes)
     if @remaining == 0
       opcode = read_header
     else
@@ -138,8 +138,8 @@ class HTTP::WebSocket::Protocol
     @io.write mask_array.to_slice
 
     data.each_with_index do |byte, index|
-      mask = mask_array[index % 4]
-      @io.write_byte(byte ^ mask_array[index % 4])
+      mask = mask_array[index & 0b11] # x & 0b11 == x % 4
+      @io.write_byte(byte ^ mask_array[index & 0b11])
     end
   end
 
@@ -177,13 +177,13 @@ class HTTP::WebSocket::Protocol
   end
 
   private def read_size
-    size = (@header[1] & 0x7f_u8).to_i
+    size = (@header[1] & 0x7f_u8).to_u64
     if size == 126
-      size = 0
+      size = 0_u64
       2.times { size <<= 8; size += @io.read_byte.not_nil! }
     elsif size == 127
-      size = 0
-      4.times { size <<= 8; size += @io.read_byte.not_nil! }
+      size = 0_u64
+      8.times { size <<= 8; size += @io.read_byte.not_nil! }
     end
     size
   end
@@ -193,7 +193,7 @@ class HTTP::WebSocket::Protocol
     @io.read_fully(buffer[0, count])
     if masked?
       count.times do |i|
-        buffer[i] ^= @mask[@mask_offset % 4]
+        buffer[i] ^= @mask[@mask_offset & 0b11] # x & 0b11 == x % 4
         @mask_offset += 1
       end
     end
@@ -213,11 +213,27 @@ class HTTP::WebSocket::Protocol
     (@header[1] & 0x80_u8) != 0_u8
   end
 
+  def ping(message = nil)
+    if message
+      send(message.to_slice, Opcode::PING)
+    else
+      send(Bytes.empty, Opcode::PING)
+    end
+  end
+
+  def pong(message = nil)
+    if message
+      send(message.to_slice, Opcode::PONG)
+    else
+      send(Bytes.empty, Opcode::PONG)
+    end
+  end
+
   def close(message = nil)
     if message
       send(message.to_slice, Opcode::CLOSE)
     else
-      send(Slice.new(Pointer(UInt8).null, 0), Opcode::CLOSE)
+      send(Bytes.empty, Opcode::CLOSE)
     end
   end
 

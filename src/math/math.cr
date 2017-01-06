@@ -29,11 +29,11 @@ module Math
   {% for name in %w(besselj0 besselj1 bessely0 bessely1) %}
     # Calculates the {{name.id}} function of *value*
     def {{name.id}}(value : Float32)
-      {{:ifdef.id}} darwin
+      {% if flag?(:darwin) %}
         LibM.{{name.id}}_f64(value).to_f32
-      else
+      {% else %}
         LibM.{{name.id}}_f32(value)
-      {{:end.id}}
+      {% end %}
     end
 
     # ditto
@@ -66,9 +66,12 @@ module Math
 
   # Calculates the logarithmic gamma of *value*.
   #
-  # lgamma(x) is the same as
   # ```
-  # Math.log(Math.gamma(x).abs)
+  # Math.lgamma(2.96)
+  # ```
+  # is the same as
+  # ```
+  # Math.log(Math.gamma(2.96).abs)
   # ```
   def lgamma(value : Float32)
     {% if flag?(:darwin) %}
@@ -174,11 +177,11 @@ module Math
   {% for name in %w(besselj bessely) %}
     # Calculates {{name.id}} with parameters *value1* and *value2*
     def {{name.id}}(value1 : Int32, value2 : Float32)
-      {{:ifdef.id}} darwin
+      {% if flag?(:darwin) %}
         LibM.{{name.id}}_f64(value1, value2).to_f32
-      else
+      {% else %}
         LibM.{{name.id}}_f32(value1, value2)
-      {{:end.id}}
+      {% end %}
     end
 
     # ditto
@@ -227,7 +230,8 @@ module Math
   # Computes the next highest power of 2 of *v*
   #
   # ```
-  # Math.pw2ceil(33) #=> 64
+  # Math.pw2ceil(33) # => 64
+  # ```
   def pw2ceil(v)
     # Taken from http://graphics.stanford.edu/~seander/bithacks.html#RoundUpPowerOf2
     v -= 1

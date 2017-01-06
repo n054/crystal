@@ -2,8 +2,8 @@
 # * can't be expressed in Crystal (need to be expressed in LLVM). For example unary
 #   and binary math operators fall into this category.
 # * should always be inlined with an LLVM instruction for performance reasons, even
-#   in non-release builds. An example of this is Char#ord, which could be implemented
-#   in Crystal by assigning self to a variable and casting a pointer to it to Int32,
+#   in non-release builds. An example of this is `Char#ord`, which could be implemented
+#   in Crystal by assigning `self` to a variable and casting a pointer to it to `Int32`,
 #   and then reading back the value.
 
 class Object
@@ -27,14 +27,14 @@ class Object
   def class
   end
 
-  # :nodoc
+  # :nodoc:
   @[Primitive(:object_crystal_type_id)]
   def crystal_type_id
   end
 end
 
 class Reference
-  # Returns a UInt64 that uniquely identifies this object.
+  # Returns a `UInt64` that uniquely identifies this object.
   #
   # The returned value is the memory address of this object.
   #
@@ -51,13 +51,20 @@ class Reference
   end
 end
 
+class Class
+  # :nodoc:
+  @[Primitive(:class_crystal_instance_type_id)]
+  def crystal_instance_type_id
+  end
+end
+
 struct Bool
-  # Returns true if *self* is equal to *other*.
+  # Returns true if `self` is equal to *other*.
   @[Primitive(:binary)]
   def ==(other : Bool) : Bool
   end
 
-  # Returns true if *self* is not equal to *other*.
+  # Returns true if `self` is not equal to *other*.
   @[Primitive(:binary)]
   def !=(other : Bool) : Bool
   end
@@ -92,7 +99,7 @@ struct Char
                        ">"  => "greater than",
                        ">=" => "greater than or equal to",
                      } %}
-    # Returns true if *self*'s codepoint is {{desc.id}} *other*'s codepoint.
+    # Returns true if `self`'s codepoint is {{desc.id}} *other*'s codepoint.
     @[Primitive(:binary)]
     def {{op.id}}(other : Char) : Bool
     end
@@ -100,12 +107,12 @@ struct Char
 end
 
 struct Symbol
-  # Returns true if *self* is equal to *other*.
+  # Returns true if `self` is equal to *other*.
   @[Primitive(:binary)]
   def ==(other : Symbol) : Bool
   end
 
-  # Returns true if *self* is not equal to *other*.
+  # Returns true if `self` is not equal to *other*.
   @[Primitive(:binary)]
   def !=(other : Symbol) : Bool
   end
@@ -135,14 +142,13 @@ struct Pointer(T)
   # ```
   # # Allocate memory for an Int32: 4 bytes
   # ptr = Pointer(Int32).malloc(1_u64)
-  # ptr.value #=> 0
+  # ptr.value # => 0
   #
   # # Allocate memory for 10 Int32: 40 bytes
   # ptr = Pointer(Int32).malloc(10_u64)
-  # ptr[0] #=> 0
-  # ...
-  # ptr[9] #=> 0
-  #
+  # ptr[0] # => 0
+  # # ...
+  # ptr[9] # => 0
   # ```
   @[Primitive(:pointer_malloc)]
   def self.malloc(size : UInt64)
@@ -237,7 +243,7 @@ struct Pointer(T)
 end
 
 struct Proc
-  # Invokes this Proc and returns the result.
+  # Invokes this `Proc` and returns the result.
   #
   # ```
   # add = ->(x : Int32, y : Int32) { x + y }
@@ -249,7 +255,7 @@ struct Proc
   end
 end
 
-# All Number methods are defined on concrete structs (for example Int32, UInt8, etc.),
+# All `Number` methods are defined on concrete structs (for example `Int32`, `UInt8`, etc.),
 # never on Number, Int or Float because we don't want to handle a primitive for
 # other types that could extend these types (for example BigInt): if we do that
 # a compiler crash will happen.
@@ -273,7 +279,7 @@ end
                              to_u8: UInt8, to_u16: UInt16, to_u32: UInt32, to_u64: UInt64,
                              to_f32: Float32, to_f64: Float64,
                            } %}
-        # Returns *self* converted to {{type}}.
+        # Returns `self` converted to {{type}}.
         @[Primitive(:cast)]
         def {{name.id}} : {{type}}
         end
@@ -288,7 +294,7 @@ end
                              ">"  => "greater than",
                              ">=" => "greater than or equal to",
                            } %}
-          # Returns true if *self* is {{desc.id}} *other*.
+          # Returns true if `self` is {{desc.id}} *other*.
           @[Primitive(:binary)]
           def {{op.id}}(other : {{num2.id}}) : Bool
           end
@@ -299,7 +305,7 @@ end
 
   {% for int in ints %}
     struct {{int.id}}
-      # Returns a `Char` that has the unicode codepoint of *self*,
+      # Returns a `Char` that has the unicode codepoint of `self`,
       # without checking if this integer is in the range valid for
       # chars (`0..0x10ffff`).
       #
@@ -316,24 +322,24 @@ end
       {% for int2 in ints %}
         {% for op, desc in binaries %}
           {% if op != "/" %}
-            # Returns the result of {{desc.id}} *self* and *other*.
+            # Returns the result of {{desc.id}} `self` and *other*.
             @[Primitive(:binary)]
             def {{op.id}}(other : {{int2.id}}) : self
             end
           {% end %}
         {% end %}
 
-        # Returns the result of performing a bitwise OR of *self*'s and *other*'s bits.
+        # Returns the result of performing a bitwise OR of `self`'s and *other*'s bits.
         @[Primitive(:binary)]
         def |(other : {{int2.id}}) : self
         end
 
-        # Returns the result of performing a bitwise AND of *self*'s and *other*'s bits.
+        # Returns the result of performing a bitwise AND of `self`'s and *other*'s bits.
         @[Primitive(:binary)]
         def &(other : {{int2.id}}) : self
         end
 
-        # Returns the result of performing a bitwise XOR of *self*'s and *other*'s bits.
+        # Returns the result of performing a bitwise XOR of `self`'s and *other*'s bits.
         @[Primitive(:binary)]
         def ^(other : {{int2.id}}) : self
         end
@@ -361,7 +367,7 @@ end
 
       {% for float in floats %}
         {% for op, desc in binaries %}
-          # Returns the result of {{desc.id}} *self* and *other*.
+          # Returns the result of {{desc.id}} `self` and *other*.
           @[Primitive(:binary)]
           def {{op.id}}(other : {{float.id}}) : {{float.id}}
           end
@@ -374,7 +380,7 @@ end
     struct {{float.id}}
       {% for num in nums %}
         {% for op, desc in binaries %}
-          # Returns the result of {{desc.id}} *self* and *other*.
+          # Returns the result of {{desc.id}} `self` and *other*.
           @[Primitive(:binary)]
           def {{op.id}}(other : {{num.id}}) : self
           end

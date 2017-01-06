@@ -165,6 +165,7 @@ module HTTP
     # no explicit domain restriction and the path `/`.
     #
     # ```
+    # request = HTTP::Request.new "GET", "/"
     # request.cookies["foo"] = "bar"
     # ```
     def []=(key, value : String)
@@ -176,6 +177,7 @@ module HTTP
     # `ArgumentError` is raised.
     #
     # ```
+    # response = HTTP::Client::Response.new(200)
     # response.cookies["foo"] = HTTP::Cookie.new("foo", "bar", "/admin", Time.now + 12.hours, secure: true)
     # ```
     def []=(key, value : Cookie)
@@ -198,6 +200,7 @@ module HTTP
     # Get the current `HTTP::Cookie` for the given *key* or `nil` if none is set.
     #
     # ```
+    # request = HTTP::Request.new "GET", "/"
     # request.cookies["foo"]? # => nil
     # request.cookies["foo"] = "bar"
     # request.cookies["foo"]?.try &.value # > "bar"
@@ -209,7 +212,8 @@ module HTTP
     # Returns `true` if a cookie with the given *key* exists.
     #
     # ```
-    # request.cookies.has_key?("foo") #=> true
+    # request.cookies.has_key?("foo") # => true
+    # ```
     def has_key?(key)
       @cookies.has_key?(key)
     end
@@ -218,7 +222,7 @@ module HTTP
     # with the same name if present.
     #
     # ```
-    # response.cookies << Cookie.new("foo", "bar", http_only: true)
+    # response.cookies << HTTP::Cookie.new("foo", "bar", http_only: true)
     # ```
     def <<(cookie : Cookie)
       self[cookie.name] = cookie
@@ -246,7 +250,7 @@ module HTTP
     # `Cookie` headers in it.
     def add_request_headers(headers)
       headers.delete("Cookie")
-      headers.add("Cookie", map(&.to_cookie_header).join("; "))
+      headers.add("Cookie", map(&.to_cookie_header).join("; ")) unless empty?
 
       headers
     end

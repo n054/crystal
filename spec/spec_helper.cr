@@ -1,3 +1,5 @@
+{% raise("Please use `make spec` or `bin/crystal` when running specs, or set the i_know_what_im_doing flag if you know what you're doing") unless env("CRYSTAL_HAS_WRAPPER") || flag?("i_know_what_im_doing") %}
+
 ENV["CRYSTAL_PATH"] = "#{__DIR__}/../src"
 
 require "spec"
@@ -135,6 +137,10 @@ class Crystal::Program
   def generic_class(name, *type_vars)
     types[name].as(GenericClassType).instantiate(type_vars.to_a.map &.as(TypeVar))
   end
+
+  def generic_module(name, *type_vars)
+    types[name].as(GenericModuleType).instantiate(type_vars.to_a.map &.as(TypeVar))
+  end
 end
 
 record SemanticResult,
@@ -150,8 +156,8 @@ def assert_type(str, flags = nil, inject_primitives = true)
   result
 end
 
-def semantic(code : String, wants_doc = false)
-  code = inject_primitives(code)
+def semantic(code : String, wants_doc = false, inject_primitives = true)
+  code = inject_primitives(code) if inject_primitives
   semantic parse(code, wants_doc: wants_doc), wants_doc: wants_doc
 end
 
@@ -179,7 +185,7 @@ def assert_normalize(from, to, flags = nil)
   program.flags = flags if flags
   normalizer = Normalizer.new(program)
   from_nodes = Parser.parse(from)
-  to_nodes = normalizer.normalize(from_nodes)
+  to_nodes = program.normalize(from_nodes)
   to_nodes.to_s.strip.should eq(to.strip)
 end
 
@@ -259,8 +265,7 @@ def assert_macro_internal(program, sub_node, macro_args, macro_body, expected)
 
   call = Call.new(nil, "", sub_node)
   result = program.expand_macro a_macro, call, program, program
-  result = result.source
-  result = result[0..-2] if result.ends_with?(';')
+  result = result.chomp(';')
   result.should eq(expected)
 end
 
@@ -270,11 +275,11 @@ def parse(string, wants_doc = false)
   parser.parse
 end
 
-def codegen(code)
-  code = inject_primitives(code)
+def codegen(code, inject_primitives = true, debug = false)
+  code = inject_primitives(code) if inject_primitives
   node = parse code
   result = semantic node
-  result.program.codegen result.node, single_module: false
+  result.program.codegen result.node, single_module: false, debug: debug
 end
 
 class Crystal::SpecRunOutput
@@ -294,7 +299,7 @@ class Crystal::SpecRunOutput
   end
 end
 
-def run(code, filename = nil, inject_primitives = true)
+def run(code, filename = nil, inject_primitives = true, debug = false)
   code = inject_primitives(code) if inject_primitives
 
   # Code that requires the prelude doesn't run in LLVM's MCJIT
@@ -314,6 +319,7 @@ def run(code, filename = nil, inject_primitives = true)
     output_filename = Crystal.tempfile("crystal-spec-output")
 
     compiler = Compiler.new
+    compiler.debug = debug
     compiler.compile Compiler::Source.new("spec", code), output_filename
 
     output = `#{output_filename}`
@@ -321,7 +327,7 @@ def run(code, filename = nil, inject_primitives = true)
 
     SpecRunOutput.new(output)
   else
-    Program.new.run(code, filename: filename)
+    Program.new.run(code, filename: filename, debug: debug)
   end
 end
 

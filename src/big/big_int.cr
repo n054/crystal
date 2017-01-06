@@ -13,6 +13,7 @@ struct BigInt < Int
   # Creates a BigInt with the value zero.
   #
   # ```
+  # require "big"
   # BigInt.new # => 0
   # ```
   def initialize
@@ -57,7 +58,7 @@ struct BigInt < Int
     LibGMP.init_set_d(out @mpz, num)
   end
 
-  # Returns `num`. Useful for generic code that does `T.new(...)` with `T`
+  # Returns *num*. Useful for generic code that does `T.new(...)` with `T`
   # being a `Number`.
   def self.new(num : BigInt)
     num
@@ -142,32 +143,72 @@ struct BigInt < Int
     BigInt.new { |mpz| LibGMP.mul_ui(mpz, self, other) }
   end
 
-  def /(other : BigInt) : BigInt
-    check_division_by_zero other
-
-    BigInt.new { |mpz| LibGMP.fdiv_q(mpz, self, other) }
-  end
-
   def /(other : Int) : BigInt
     check_division_by_zero other
 
     if other < 0
-      -(self / other.abs)
+      (-self).unsafe_floored_div(-other)
     else
-      BigInt.new { |mpz| LibGMP.fdiv_q_ui(mpz, self, other) }
+      unsafe_floored_div(other)
     end
   end
 
-  def %(other : BigInt) : BigInt
+  def tdiv(other : Int) : BigInt
     check_division_by_zero other
 
-    BigInt.new { |mpz| LibGMP.fdiv_r(mpz, self, other) }
+    if other < 0
+      -self.unsafe_truncated_div(other)
+    else
+      unsafe_truncated_div(other)
+    end
+  end
+
+  def unsafe_floored_div(other : BigInt) : BigInt
+    BigInt.new { |mpz| LibGMP.fdiv_q(mpz, self, other) }
+  end
+
+  def unsafe_floored_div(other : Int) : BigInt
+    BigInt.new { |mpz| LibGMP.fdiv_q_ui(mpz, self, other.abs) }
+  end
+
+  def unsafe_truncated_div(other : BigInt) : BigInt
+    BigInt.new { |mpz| LibGMP.tdiv_q(mpz, self, other) }
+  end
+
+  def unsafe_truncated_div(other : Int) : BigInt
+    BigInt.new { |mpz| LibGMP.tdiv_q_ui(mpz, self, other.abs) }
   end
 
   def %(other : Int) : BigInt
     check_division_by_zero other
 
+    if other < 0
+      -(-self).unsafe_floored_mod(-other)
+    else
+      unsafe_floored_mod(other)
+    end
+  end
+
+  def remainder(other : Int) : BigInt
+    check_division_by_zero other
+
+    unsafe_truncated_mod(other)
+  end
+
+  def unsafe_floored_mod(other : BigInt) : BigInt
+    BigInt.new { |mpz| LibGMP.fdiv_r(mpz, self, other) }
+  end
+
+  def unsafe_floored_mod(other : Int) : BigInt
     BigInt.new { |mpz| LibGMP.fdiv_r_ui(mpz, self, other.abs) }
+  end
+
+  def unsafe_truncated_mod(other : BigInt) : BigInt
+    BigInt.new { |mpz| LibGMP.tdiv_r(mpz, self, other) }
+  end
+
+  def unsafe_truncated_mod(other : Int) : BigInt
+    BigInt.new { |mpz| LibGMP.tdiv_r_ui(mpz, self, other.abs) }
   end
 
   def ~ : BigInt
@@ -201,6 +242,23 @@ struct BigInt < Int
     BigInt.new { |mpz| LibGMP.pow_ui(mpz, self, other) }
   end
 
+  def gcd(other : BigInt) : BigInt
+    BigInt.new { |mpz| LibGMP.gcd(mpz, self, other) }
+  end
+
+  def gcd(other : Int) : Int
+    result = LibGMP.gcd_ui(nil, self, other.abs.to_u64)
+    result == 0 ? self : result
+  end
+
+  def lcm(other : BigInt) : BigInt
+    BigInt.new { |mpz| LibGMP.lcm(mpz, self, other) }
+  end
+
+  def lcm(other : Int) : BigInt
+    BigInt.new { |mpz| LibGMP.lcm_ui(mpz, self, other.abs.to_u64) }
+  end
+
   def inspect
     to_s
   end
@@ -216,7 +274,7 @@ struct BigInt < Int
   # Returns a string representation of self.
   #
   # ```
-  # puts BigInt.new("123456789101101987654321").to_s # => 123456789101101987654321
+  # BigInt.new("123456789101101987654321").to_s # => 123456789101101987654321
   # ```
   def to_s
     String.new(to_cstr)
@@ -231,9 +289,9 @@ struct BigInt < Int
   # Returns a string containing the representation of big radix base (2 through 36).
   #
   # ```
-  # puts BigInt.new("123456789101101987654321").to_s(8)  # => 32111154373025463465765261
-  # puts BigInt.new("123456789101101987654321").to_s(16) # => 1a249b1f61599cd7eab1
-  # puts BigInt.new("123456789101101987654321").to_s(36) # => k3qmt029k48nmpd
+  # BigInt.new("123456789101101987654321").to_s(8)  # => 32111154373025463465765261
+  # BigInt.new("123456789101101987654321").to_s(16) # => 1a249b1f61599cd7eab1
+  # BigInt.new("123456789101101987654321").to_s(36) # => k3qmt029k48nmpd
   # ```
   def to_s(base : Int)
     raise "Invalid base #{base}" unless 2 <= base <= 36
@@ -364,6 +422,14 @@ struct Int
 
   def %(other : BigInt) : BigInt
     to_big_i % other
+  end
+
+  def gcm(other : BigInt) : Int
+    other.gcm(self)
+  end
+
+  def lcm(other : BigInt) : BigInt
+    other.lcm(self)
   end
 
   # Returns a BigInt representing this integer.

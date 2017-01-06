@@ -3,7 +3,9 @@ require "html"
 require "uri"
 
 # A simple handler that lists directories and serves files under a given public directory.
-class HTTP::StaticFileHandler < HTTP::Handler
+class HTTP::StaticFileHandler
+  include HTTP::Handler
+
   @public_dir : String
 
   # Creates a handler that will serve files in the given *public_dir*, after
@@ -30,7 +32,7 @@ class HTTP::StaticFileHandler < HTTP::Handler
 
     original_path = context.request.path.not_nil!
     is_dir_path = original_path.ends_with? "/"
-    request_path = URI.unescape(original_path)
+    request_path = self.request_path(URI.unescape(original_path))
 
     # File path cannot contains '\0' (NUL) because all filesystem I know
     # don't accept '\0' character as file name.
@@ -67,6 +69,12 @@ class HTTP::StaticFileHandler < HTTP::Handler
     end
   end
 
+  # given a full path of the request, returns the path
+  # of the file that should be expanded at the public_dir
+  protected def request_path(path : String) : String
+    path
+  end
+
   private def redirect_to(context, url)
     context.response.status_code = 302
 
@@ -90,7 +98,7 @@ class HTTP::StaticFileHandler < HTTP::Handler
     def escaped_request_path
       @escaped_request_path ||= begin
         esc_path = URI.escape(request_path) { |b| URI.unreserved?(b) || b != '/' }
-        esc_path = esc_path[0..-2] if !esc_path.empty? && esc_path[-1] == '/'
+        esc_path = esc_path.chomp('/')
         esc_path
       end
     end

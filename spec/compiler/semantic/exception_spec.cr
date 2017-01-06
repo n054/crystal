@@ -215,9 +215,9 @@ describe "Semantic: exception" do
         p n
       end
       n
-      )) { no_return }
+      )) { int32 }
     mod = result.program
-    eh = result.node.as(Expressions).expressions[-1]
+    eh = result.node.as(Expressions).expressions[-2]
     call_p_n = eh.as(ExceptionHandler).ensure.not_nil!.as(Call)
     call_p_n.args.first.type.should eq(mod.nilable(mod.int32))
   end
@@ -233,9 +233,9 @@ describe "Semantic: exception" do
         p n
       end
       n
-      )) { no_return }
+      )) { int32 }
     mod = result.program
-    eh = result.node.as(Expressions).expressions[-1]
+    eh = result.node.as(Expressions).expressions[-2]
     call_p_n = eh.as(ExceptionHandler).ensure.not_nil!.as(Call)
     call_p_n.args.first.type.should eq(mod.nilable(mod.int32))
   end
@@ -355,52 +355,6 @@ describe "Semantic: exception" do
       )) { int32 }
   end
 
-  it "doesn't type instance variable if initialized inside begin and rescue raises" do
-    assert_type(%(
-      require "prelude"
-
-      class Foo
-        def initialize
-          begin
-            @bar = 1
-          rescue
-            raise "OH NO"
-          end
-        end
-
-        def bar
-          @bar
-        end
-      end
-
-      foo = Foo.new
-      foo.bar
-      )) { int32 }
-  end
-
-  it "doesn't type instance variable if initialized inside begin and in rescue" do
-    assert_type(%(
-      require "prelude"
-
-      class Foo
-        def initialize
-          begin
-            @bar = 1
-          rescue
-            @bar = 2
-          end
-        end
-
-        def bar
-          @bar
-        end
-      end
-
-      foo = Foo.new
-      foo.bar
-      )) { int32 }
-  end
-
   it "correctly types #1988" do
     assert_type(%(
       begin
@@ -427,5 +381,44 @@ describe "Semantic: exception" do
 
       ex
       )) { nilable types["Exception"].virtual_type }
+  end
+
+  it "types var assignment inside block inside exception handler (#3324)" do
+    assert_type(%(
+      def foo
+        yield
+      end
+
+      var = 1
+      begin
+        foo do
+          var = "foo"
+        end
+      rescue
+      end
+      var
+      )) { union_of(int32, string) }
+  end
+
+  it "marks instance variable as nilable if assigned inside rescue inside initialize" do
+    assert_error %(
+      require "prelude"
+
+      class Coco < Exception
+        def initialize(@x : Foo)
+        end
+      end
+
+      class Foo
+        def initialize
+          @x = 1
+        rescue
+          raise Coco.new(self)
+        end
+      end
+
+      Foo.new
+      ),
+      "instance variable '@x' of Foo must be Int32, not Nil"
   end
 end

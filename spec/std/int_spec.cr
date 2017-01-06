@@ -33,6 +33,12 @@ describe "Int" do
       end
     end
 
+    it "should work with large integers" do
+      x = 51_i64 ** 11
+      x.should eq(6071163615208263051_i64)
+      x.should be_a(Int64)
+    end
+
     describe "with float" do
       assert { (2 ** 2.0).should be_close(4, 0.0001) }
       assert { (2 ** 2.5_f32).should be_close(5.656854249492381, 0.0001) }
@@ -223,19 +229,19 @@ describe "Int" do
   describe "to" do
     it "does upwards" do
       a = 0
-      1.to(3) { |i| a += i }
+      1.to(3) { |i| a += i }.should be_nil
       a.should eq(6)
     end
 
     it "does downards" do
       a = 0
-      4.to(2) { |i| a += i }
+      4.to(2) { |i| a += i }.should be_nil
       a.should eq(9)
     end
 
     it "does when same" do
       a = 0
-      2.to(2) { |i| a += i }
+      2.to(2) { |i| a += i }.should be_nil
       a.should eq(2)
     end
   end
@@ -291,7 +297,7 @@ describe "Int" do
   describe "step" do
     it "steps through limit" do
       passed = false
-      1.step(1) { |x| passed = true }
+      1.step(to: 1) { |x| passed = true }
       fail "expected step to pass through 1" unless passed
     end
   end
@@ -322,14 +328,62 @@ describe "Int" do
     UInt64.new(1).should eq(1)
   end
 
+  it "divides negative numbers" do
+    (7 / 2).should eq(3)
+    (-7 / 2).should eq(-4)
+    (7 / -2).should eq(-4)
+    (-7 / -2).should eq(3)
+
+    (6 / 2).should eq(3)
+    (-6 / 2).should eq(-3)
+    (6 / -2).should eq(-3)
+    (-6 / -2).should eq(3)
+  end
+
+  it "tdivs" do
+    5.tdiv(3).should eq(1)
+    -5.tdiv(3).should eq(-1)
+    5.tdiv(-3).should eq(-1)
+    -5.tdiv(-3).should eq(1)
+  end
+
+  it "holds true that x == q*y + r" do
+    [5, -5, 6, -6, 10, -10].each do |x|
+      [3, -3].each do |y|
+        q = x / y
+        r = x % y
+        (q*y + r).should eq(x)
+      end
+    end
+  end
+
   it "raises when divides by zero" do
     expect_raises(DivisionByZero) { 1 / 0 }
     (4 / 2).should eq(2)
   end
 
+  it "raises when divides Int::MIN by -1" do
+    expect_raises(ArgumentError) { Int8::MIN / -1 }
+    expect_raises(ArgumentError) { Int16::MIN / -1 }
+    expect_raises(ArgumentError) { Int32::MIN / -1 }
+    expect_raises(ArgumentError) { Int64::MIN / -1 }
+
+    (UInt8::MIN / -1).should eq(0)
+  end
+
   it "raises when mods by zero" do
     expect_raises(DivisionByZero) { 1 % 0 }
     (4 % 2).should eq(0)
+  end
+
+  it "does times" do
+    i = sum = 0
+    3.times do |n|
+      i += 1
+      sum += n
+    end.should be_nil
+    i.should eq(3)
+    sum.should eq(3)
   end
 
   it "gets times iterator" do
@@ -359,6 +413,16 @@ describe "Int" do
     -13.remainder(-4).should eq(-1)
   end
 
+  it "does upto" do
+    i = sum = 0
+    1.upto(3) do |n|
+      i += 1
+      sum += n
+    end.should be_nil
+    i.should eq(3)
+    sum.should eq(6)
+  end
+
   it "gets upto iterator" do
     iter = 1.upto(3)
     iter.next.should eq(1)
@@ -368,6 +432,16 @@ describe "Int" do
 
     iter.rewind
     iter.next.should eq(1)
+  end
+
+  it "does downto" do
+    i = sum = 0
+    3.downto(1) do |n|
+      i += 1
+      sum += n
+    end.should be_nil
+    i.should eq(3)
+    sum.should eq(6)
   end
 
   it "gets downto iterator" do

@@ -105,9 +105,9 @@ describe "Semantic: proc" do
 
   it "binds proc literal to arguments and body" do
     assert_type("
-      $x = 1
-      f = -> { $x }
-      $x = 'a'
+      x = 1
+      f = -> { x }
+      x = 'a'
       f
     ") { proc_of(union_of(int32, char)) }
   end
@@ -179,7 +179,7 @@ describe "Semantic: proc" do
   it "disallows casting a proc type to one accepting more arguments" do
     assert_error("
       f = ->(x : Int32) { x.to_f }
-      f as (Int32, Int32 -> Float64)
+      f.as(Int32, Int32 -> Float64)
       ",
       "can't cast")
   end
@@ -187,14 +187,14 @@ describe "Semantic: proc" do
   it "allows casting a proc type to one with void argument" do
     assert_type("
       f = ->(x : Int32) { x.to_f }
-      f as Int32 -> Void
+      f.as(Int32 -> Void)
       ") { proc_of [int32, void] }
   end
 
   it "disallows casting a proc type to one accepting less arguments" do
     assert_error "
       f = ->(x : Int32) { x.to_f }
-      f as -> Float64
+      f.as(-> Float64)
       ",
       "can't cast Proc(Int32, Float64) to Proc(Float64)"
   end
@@ -202,7 +202,7 @@ describe "Semantic: proc" do
   it "disallows casting a proc type to one accepting same size argument but different output" do
     assert_error "
       f = ->(x : Int32) { x.to_f }
-      f as Int32 -> Int32
+      f.as(Int32 -> Int32)
       ",
       "can't cast Proc(Int32, Float64) to Proc(Int32, Int32)"
   end
@@ -210,7 +210,7 @@ describe "Semantic: proc" do
   it "disallows casting a proc type to one accepting same size argument but different input" do
     assert_error "
       f = ->(x : Int32) { x.to_f }
-      f as Float64 -> Float64
+      f.as(Float64 -> Float64)
       ",
       "can't cast Proc(Int32, Float64) to Proc(Float64, Float64)"
   end
@@ -304,8 +304,8 @@ describe "Semantic: proc" do
 
   it "allows new on proc type" do
     assert_type("
-      alias F = Int32 -> Int32
-      F.new { |x| x + 1 }
+      alias Func = Int32 -> Int32
+      Func.new { |x| x + 1 }
       ") { proc_of(int32, int32) }
   end
 
@@ -321,23 +321,23 @@ describe "Semantic: proc" do
 
   it "allows new on proc type with less block args" do
     assert_type("
-      alias F = Int32 -> Int32
-      F.new { 1 }
+      alias Func = Int32 -> Int32
+      Func.new { 1 }
       ") { proc_of(int32, int32) }
   end
 
   it "says wrong number of block args in new on proc type" do
     assert_error "
-      alias F = Int32 -> Int32
-      F.new { |x, y| }
+      alias Alias = Int32 -> Int32
+      Alias.new { |x, y| }
       ",
       "wrong number of block arguments for Proc(Int32, Int32)#new (given 2, expected 1)"
   end
 
   it "says wrong return type in new on proc type" do
     assert_error "
-      alias F = Int32 -> Int32
-      F.new &.to_f
+      alias Alias = Int32 -> Int32
+      Alias.new &.to_f
       ",
       "expected block to return Int32, not Float64"
   end
@@ -415,7 +415,7 @@ describe "Semantic: proc" do
 
   it "allows using Proc as restriction (3)" do
     assert_type(%(
-      def foo(x : Proc(T, U))
+      def foo(x : Proc(T, U)) forall T, U
         T
       end
 
@@ -483,47 +483,6 @@ describe "Semantic: proc" do
         2
       }
       )) { int32 }
-  end
-
-  it "specifies a call convention" do
-    result = semantic(%(
-      lib LibFoo
-        @[CallConvention("X86_StdCall")]
-        fun foo : Int32
-      end
-      ))
-    foo = result.program.types["LibFoo"].lookup_first_def("foo", nil).as(External)
-    foo.call_convention.should eq(LLVM::CallConvention::X86_StdCall)
-  end
-
-  it "errors if wrong number of arguments for CallConvention" do
-    assert_error %(
-      lib LibFoo
-        @[CallConvention("X86_StdCall", "bar")]
-        fun foo : Int32
-      end
-      ),
-      "wrong number of arguments for attribute CallConvention (given 2, expected 1)"
-  end
-
-  it "errors if CallConvention argument is not a string" do
-    assert_error %(
-      lib LibFoo
-        @[CallConvention(1)]
-        fun foo : Int32
-      end
-      ),
-      "argument to CallConvention must be a string"
-  end
-
-  it "errors if CallConvention argument is not a valid string" do
-    assert_error %(
-      lib LibFoo
-        @[CallConvention("foo")]
-        fun foo : Int32
-      end
-      ),
-      "invalid call convention. Valid values are #{LLVM::CallConvention.values.join ", "}"
   end
 
   it "types proc literal with a type that was never instantiated" do
@@ -629,7 +588,7 @@ describe "Semantic: proc" do
         block
       end
 
-      block = foo { |elems| Bar.new((elems[0] as Bar).value) }
+      block = foo { |elems| Bar.new(elems[0].as(Bar).value) }
       elems = [Foo.new, Bar.new(1)]
       block
       )) { proc_of(array_of(types["Foo"].virtual_type), types["Foo"].virtual_type) }
@@ -823,7 +782,7 @@ describe "Semantic: proc" do
   it "can match *T in block argument" do
     assert_type(%(
       struct Tuple
-        def foo(&block : *T -> U)
+        def foo(&block : *T -> U) forall T, U
           yield self[0], self[1]
           U
         end
@@ -854,7 +813,7 @@ describe "Semantic: proc" do
 
   it "accesses T inside variadic generic" do
     assert_type(%(
-      def foo(proc : Proc(*T, R))
+      def foo(proc : Proc(*T, R)) forall T, R
         {T, R}
       end
 
@@ -864,7 +823,7 @@ describe "Semantic: proc" do
 
   it "accesses T inside variadic generic (2)" do
     assert_type(%(
-      def foo(proc : Proc(*T, R))
+      def foo(proc : Proc(*T, R)) forall T, R
         {T, R}
       end
 
@@ -874,7 +833,7 @@ describe "Semantic: proc" do
 
   it "accesses T inside variadic generic, in proc notation" do
     assert_type(%(
-      def foo(proc : *T -> R)
+      def foo(proc : *T -> R) forall T, R
         {T, R}
       end
 

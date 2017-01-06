@@ -8,7 +8,7 @@ require "./yaml/*"
 # making it easy to traverse a complex YAML structure but requires some casts from time to time,
 # mostly via some method invocations.
 #
-# ```crystal
+# ```
 # require "yaml"
 #
 # data = YAML.parse <<-END
@@ -19,7 +19,7 @@ require "./yaml/*"
 #                - qux
 #                - fox
 #          END
-# data["foo"]["bar"]["baz"][1].as_s # => "qux"
+# data["foo"]["bar"]["baz"][1].as_s # => "fox"
 # ```
 #
 # ### Parsing with `YAML#mapping`
@@ -27,21 +27,44 @@ require "./yaml/*"
 # `YAML#mapping` defines how an object is mapped to YAML. Mapped data is accessible
 # through generated properties like *Foo#bar*. It is more type-safe and efficient.
 #
+# ### Generating with `YAML.build`
+#
+# Use `YAML.build`, which uses `YAML::Builder`, to generate YAML
+# by emitting scalars, sequences and mappings:
+#
+# ```
+# require "yaml"
+#
+# string = YAML.build do |yaml|
+#   yaml.mapping do
+#     yaml.scalar "foo"
+#     yaml.sequence do
+#       yaml.scalar 1
+#       yaml.scalar 2
+#     end
+#   end
+# end
+# string # => "---\nfoo:\n- 1\n- 2\n"
+# ```
+#
 # ### Dumping with `YAML.dump` or `#to_yaml`
 #
 # `YAML.dump` generates the YAML representation for an object. An `IO` can be passed and it will be written there,
 # otherwise it will be returned as a string. Similarly, `#to_yaml` (with or without an `IO`) on any object does the same.
 #
-# ```crystal
-# yaml = YAML.dump({hello: "world"})                                # => "--- \nhello: world"
-# File.open("file.yml", "w") { |f| YAML.dump({hello: "world"}, f) } # => writes it to the file
+# ```
+# yaml = YAML.dump({hello: "world"})                               # => "---\nhello: world\n"
+# File.open("foo.yml", "w") { |f| YAML.dump({hello: "world"}, f) } # writes it to the file
 # # or:
-# yaml = {hello: "world"}.to_yaml                                # => "--- \nhello: world"
-# File.open("file.yml", "w") { |f| {hello: "world"}.to_yaml(f) } # => writes it to the file
+# yaml = {hello: "world"}.to_yaml                               # => "---\nhello: world\n"
+# File.open("foo.yml", "w") { |f| {hello: "world"}.to_yaml(f) } # writes it to the file
 # ```
 module YAML
+  class Error < Exception
+  end
+
   # Exception thrown on a YAML parse error.
-  class ParseException < Exception
+  class ParseException < Error
     getter line_number : Int32
     getter column_number : Int32
 
@@ -71,7 +94,7 @@ module YAML
   #     bar
   # ```
   #
-  # ```crystal
+  # ```
   # require "yaml"
   #
   # YAML.parse(File.read("./foo.yml"))
@@ -83,13 +106,8 @@ module YAML
   # # => "paragraph" => "foo\nbar\n"
   # # => }
   # ```
-  def self.parse(data : String) : Any
-    parser = YAML::Parser.new(data)
-    begin
-      parser.parse
-    ensure
-      parser.close
-    end
+  def self.parse(data : String | IO) : Any
+    YAML::Parser.new data, &.parse
   end
 
   # Deserializes multiple YAML documents.
@@ -101,19 +119,14 @@ module YAML
   # hello: world
   # ```
   #
-  # ```crystal
+  # ```
   # require "yaml"
   #
   # YAML.parse_all(File.read("./foo.yml"))
   # # => [{"foo" => "bar"}, {"hello" => "world"}]
   # ```
   def self.parse_all(data : String) : Array(Any)
-    parser = YAML::Parser.new(data)
-    begin
-      parser.parse_all
-    ensure
-      parser.close
-    end
+    YAML::Parser.new data, &.parse_all
   end
 
   # Serializes an object to YAML, returning it as a string.
@@ -121,7 +134,7 @@ module YAML
     object.to_yaml
   end
 
-  # Serializes an object to YAML, writing it to `io`.
+  # Serializes an object to YAML, writing it to *io*.
   def self.dump(object, io : IO)
     object.to_yaml(io)
   end

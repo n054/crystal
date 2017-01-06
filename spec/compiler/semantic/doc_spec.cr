@@ -10,7 +10,7 @@ describe "Semantic: doc" do
     program = result.program
     foo = program.types["Foo"]
     foo.doc.should eq("Hello")
-    foo.locations.size.should eq(1)
+    foo.locations.not_nil!.size.should eq(1)
   end
 
   it "stores doc for abstract class" do
@@ -33,7 +33,7 @@ describe "Semantic: doc" do
     program = result.program
     foo = program.types["Foo"]
     foo.doc.should eq("Hello")
-    foo.locations.size.should eq(1)
+    foo.locations.not_nil!.size.should eq(1)
   end
 
   it "stores doc for module" do
@@ -45,7 +45,7 @@ describe "Semantic: doc" do
     program = result.program
     foo = program.types["Foo"]
     foo.doc.should eq("Hello")
-    foo.locations.size.should eq(1)
+    foo.locations.not_nil!.size.should eq(1)
   end
 
   it "stores doc for def" do
@@ -165,12 +165,13 @@ describe "Semantic: doc" do
     result = semantic %(
       # Hello
       enum Foo
+        A
       end
     ), wants_doc: true
     program = result.program
     foo = program.types["Foo"]
     foo.doc.should eq("Hello")
-    foo.locations.size.should eq(1)
+    foo.locations.not_nil!.size.should eq(1)
   end
 
   it "stores doc for flags enum with base type" do
@@ -178,13 +179,14 @@ describe "Semantic: doc" do
       # Hello
       @[Flags]
       enum Foo : UInt8
+        A
       end
     ), wants_doc: true
     program = result.program
     foo = program.types["Foo"]
     foo.has_attribute?("Flags").should be_true
     foo.doc.should eq("Hello")
-    foo.locations.size.should eq(1)
+    foo.locations.not_nil!.size.should eq(1)
   end
 
   it "stores doc for enum and doesn't mix with value" do
@@ -198,7 +200,7 @@ describe "Semantic: doc" do
     program = result.program
     foo = program.types["Foo"]
     foo.doc.should eq("Hello")
-    foo.locations.size.should eq(1)
+    foo.locations.not_nil!.size.should eq(1)
   end
 
   it "stores doc for enum with @[Flags]" do
@@ -206,6 +208,7 @@ describe "Semantic: doc" do
       # Hello
       @[Flags]
       enum Foo
+        A
       end
     ), wants_doc: true
     program = result.program
@@ -224,29 +227,29 @@ describe "Semantic: doc" do
     foo = program.types["Foo"]
     a = foo.types["A"]
     a.doc.should eq("Hello")
-    a.locations.size.should eq(1)
+    a.locations.not_nil!.size.should eq(1)
   end
 
   it "stores doc for constant" do
     result = semantic %(
       # Hello
-      A = 1
+      CONST = 1
     ), wants_doc: true
     program = result.program
-    a = program.types["A"]
+    a = program.types["CONST"]
     a.doc.should eq("Hello")
-    a.locations.size.should eq(1)
+    a.locations.not_nil!.size.should eq(1)
   end
 
   it "stores doc for alias" do
     result = semantic %(
       # Hello
-      alias A = Int32
+      alias Alias = Int32
     ), wants_doc: true
     program = result.program
-    a = program.types["A"]
+    a = program.types["Alias"]
     a.doc.should eq("Hello")
-    a.locations.size.should eq(1)
+    a.locations.not_nil!.size.should eq(1)
   end
 
   it "stores doc for nodes defined in macro call" do
@@ -286,7 +289,7 @@ describe "Semantic: doc" do
 
       # Hello
       foo
-    ), wants_doc: true
+    ), wants_doc: true, inject_primitives: false
     program = result.program
     foo = program.types["Foo"]
     foo.doc.should eq("Hello")
@@ -304,7 +307,7 @@ describe "Semantic: doc" do
     program = result.program
     foo = program.types["Foo"]
     foo.doc.should eq("Hello")
-    foo.locations.size.should eq(2)
+    foo.locations.not_nil!.size.should eq(2)
   end
 
   it "stores doc for module if reopening" do
@@ -328,6 +331,6 @@ describe "Semantic: doc" do
     ), wants_doc: true
     program = result.program
     foo = program.types["Foo"]
-    foo.locations.size.should eq(1)
+    foo.locations.not_nil!.size.should eq(1)
   end
 end

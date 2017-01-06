@@ -291,7 +291,7 @@ module Crystal
       Call.new(path, "new", [node.from, node.to, bool]).at(node)
     end
 
-    # Convert an interpolation to a concatenation with a MemoryIO:
+    # Convert an interpolation to a concatenation with an IO::Memory:
     #
     # From:
     #
@@ -299,7 +299,7 @@ module Crystal
     #
     # To:
     #
-    #     (MemoryIO.new << "foo" << bar << "baz").to_s
+    #     (IO::Memory.new << "foo" << bar << "baz").to_s
     def expand(node : StringInterpolation)
       # Compute how long at least the string will be, so we
       # can allocate enough space.
@@ -314,13 +314,13 @@ module Crystal
       end
 
       if capacity <= 64
-        call = Call.new(Path.global(["String", "Builder"]), "new")
+        call = Call.new(Path.global(["String", "Builder"]), "new").at(node)
       else
-        call = Call.new(Path.global(["String", "Builder"]), "new", NumberLiteral.new(capacity))
+        call = Call.new(Path.global(["String", "Builder"]), "new", NumberLiteral.new(capacity)).at(node)
       end
 
       node.expressions.each do |piece|
-        call = Call.new(call, "<<", piece)
+        call = Call.new(call, "<<", piece).at(node)
       end
       Call.new(call, "to_s").at(node)
     end
@@ -467,6 +467,67 @@ module Crystal
       final_exp
     end
 
+    def expand(node : Select)
+      index_name = @program.new_temp_var_name
+      value_name = @program.new_temp_var_name
+
+      targets = [Var.new(index_name).at(node), Var.new(value_name).at(node)] of ASTNode
+      channel = Path.global("Channel").at(node)
+
+      tuple_values = [] of ASTNode
+      case_whens = [] of When
+
+      node.whens.each_with_index do |a_when, index|
+        condition = a_when.condition
+        case condition
+        when Call
+          cloned_call = condition.clone
+          cloned_call.name = select_action_name(cloned_call.name)
+          tuple_values << cloned_call
+
+          case_whens << When.new([NumberLiteral.new(index).at(node)] of ASTNode, a_when.body.clone)
+        when Assign
+          cloned_call = condition.value.as(Call).clone
+          cloned_call.name = select_action_name(cloned_call.name)
+          tuple_values << cloned_call
+
+          typeof_node = TypeOf.new([condition.value.clone] of ASTNode).at(node)
+          cast = Cast.new(Var.new(value_name).at(node), typeof_node).at(node)
+          new_assign = Assign.new(condition.target.clone, cast).at(node)
+          new_body = Expressions.new([new_assign, a_when.body.clone] of ASTNode)
+          case_whens << When.new([NumberLiteral.new(index).at(node)] of ASTNode, new_body)
+        else
+          node.raise "Bug: expected select when expression to be Assign or Call, not #{condition}"
+        end
+      end
+
+      if node_else = node.else
+        case_else = node_else.clone
+      else
+        case_else = Call.new(nil, "raise", args: [StringLiteral.new("Bug: invalid select index")] of ASTNode, global: true).at(node)
+      end
+
+      call_args = [TupleLiteral.new(tuple_values).at(node)] of ASTNode
+      call_args << BoolLiteral.new(true) if node.else
+
+      call = Call.new(channel, "select", call_args).at(node)
+      multi = MultiAssign.new(targets, [call] of ASTNode)
+      case_cond = Var.new(index_name).at(node)
+      a_case = Case.new(case_cond, case_whens, case_else).at(node)
+      Expressions.from([multi, a_case] of ASTNode).at(node)
+    end
+
+    def select_action_name(name)
+      case name
+      when .ends_with? "!"
+        name[0...-1] + "_select_action!"
+      when .ends_with? "?"
+        name[0...-1] + "_select_action?"
+      else
+        name + "_select_action"
+      end
+    end
+
     # Transform a multi assign into many assigns.
     def expand(node : MultiAssign)
       # From:
@@ -552,6 +613,12 @@ module Crystal
 
       right_side = temp_var.clone
 
+      check_implicit_obj Call
+      check_implicit_obj RespondsTo
+      check_implicit_obj IsA
+      check_implicit_obj Cast
+      check_implicit_obj NilableCast
+
       case cond
       when NilLiteral
         return IsA.new(right_side, Path.global("Nil"))
@@ -560,10 +627,6 @@ module Crystal
       when Call
         obj = cond.obj
         case obj
-        when ImplicitObj
-          implicit_call = cond.clone.as(Call)
-          implicit_call.obj = temp_var.clone
-          return implicit_call
         when Path
           if cond.name == "class"
             return IsA.new(right_side, Metaclass.new(obj.clone).at(obj))
@@ -575,7 +638,17 @@ module Crystal
         end
       end
 
-      Call.new(cond, "===", right_side)
+      Call.new(cond, "===", right_side).at(obj)
+    end
+
+    macro check_implicit_obj(type)
+      if cond.is_a?({{type}})
+        if (obj = cond.obj).is_a?(ImplicitObj)
+          implicit_call = cond.clone.as({{type}})
+          implicit_call.obj = temp_var.clone
+          return implicit_call
+        end
+      end
     end
 
     private def regex_new_call(node, value)

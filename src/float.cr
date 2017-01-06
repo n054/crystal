@@ -86,13 +86,13 @@ struct Float
   end
 
   # Writes this float to the given *io* in the given *format*.
-  # See `IO#write_bytes`.
+  # See also: `IO#write_bytes`.
   def to_io(io : IO, format : IO::ByteFormat)
     format.encode(self, io)
   end
 
   # Reads a float from the given *io* in the given *format*.
-  # See `IO#read_bytes`.
+  # See also: `IO#read_bytes`.
   def self.from_io(io : IO, format : IO::ByteFormat)
     format.decode(self, io)
   end
@@ -361,7 +361,7 @@ struct Float64
         # Need to add one and carry to the left
         len = max_run_start
         index = len - 1
-        while index > 0
+        while index >= 0
           byte = slice.to_unsafe[index]
           case byte
           when '.'

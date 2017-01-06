@@ -2,7 +2,7 @@ require "../../spec_helper"
 
 describe "Semantic: static array" do
   it "types static array with var declaration" do
-    assert_type("x = uninitialized Char[3]") { nil_type }
+    assert_type("x = uninitialized Char[3]") { static_array_of(char, 3) }
   end
 
   it "types static array new" do
@@ -97,7 +97,7 @@ describe "Semantic: static array" do
 
   it "can match N type argument of static array (#1203)" do
     assert_type(%(
-      def fn(a : StaticArray(T, N))
+      def fn(a : StaticArray(T, N)) forall T, N
         N
       end
 
@@ -108,7 +108,7 @@ describe "Semantic: static array" do
 
   it "can match number type argument of static array (#1203)" do
     assert_type(%(
-      def fn(a : StaticArray(T, 10))
+      def fn(a : StaticArray(T, 10)) forall T
         10
       end
 
@@ -119,7 +119,7 @@ describe "Semantic: static array" do
 
   it "doesn't match other number type argument of static array (#1203)" do
     assert_error %(
-      def fn(a : StaticArray(T, 11))
+      def fn(a : StaticArray(T, 11)) forall T
         10
       end
 

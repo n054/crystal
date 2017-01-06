@@ -78,7 +78,12 @@ describe Channel::Unbuffered do
     ch1 = Channel::Unbuffered(Int32).new
     ch2 = Channel::Unbuffered(Int32).new
     spawn { ch1.send 123 }
-    Channel.select(ch1.receive_op, ch2.receive_op).should eq({0, 123})
+    Channel.select(ch1.receive_select_action, ch2.receive_select_action).should eq({0, 123})
+  end
+
+  it "works with select else" do
+    ch1 = Channel::Unbuffered(Int32).new
+    Channel.select({ch1.receive_select_action}, true).should eq({1, nil})
   end
 
   it "can send and receive nil" do
@@ -180,7 +185,7 @@ describe Channel::Buffered do
     ch1 = Channel::Buffered(Int32).new
     ch2 = Channel::Buffered(Int32).new
     spawn { ch1.send 123 }
-    Channel.select(ch1.receive_op, ch2.receive_op).should eq({0, 123})
+    Channel.select(ch1.receive_select_action, ch2.receive_select_action).should eq({0, 123})
   end
 
   it "can send and receive nil" do
@@ -243,5 +248,15 @@ describe Channel::Buffered do
   it "does inspect on buffered channel" do
     ch = Channel::Buffered(Int32).new(10)
     ch.inspect.should eq("#<Channel::Buffered(Int32):0x#{ch.object_id.to_s(16)}>")
+  end
+
+  it "does pretty_inspect on unbuffered channel" do
+    ch = Channel::Unbuffered(Int32).new
+    ch.pretty_inspect.should eq("#<Channel::Unbuffered(Int32):0x#{ch.object_id.to_s(16)}>")
+  end
+
+  it "does pretty_inspect on buffered channel" do
+    ch = Channel::Buffered(Int32).new(10)
+    ch.pretty_inspect.should eq("#<Channel::Buffered(Int32):0x#{ch.object_id.to_s(16)}>")
   end
 end

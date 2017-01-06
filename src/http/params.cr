@@ -7,8 +7,10 @@ module HTTP
 
     # Parses an HTTP query string into a `HTTP::Params`
     #
-    #     HTTP::Params.parse("foo=bar&foo=baz&qux=zoo")
-    #     #=> #<HTTP::Params @raw_params = {"foo" => ["bar", "baz"], "qux" => ["zoo"]}>
+    # ```
+    # HTTP::Params.parse("foo=bar&foo=baz&qux=zoo")
+    # # => #<HTTP::Params @raw_params = {"foo" => ["bar", "baz"], "qux" => ["zoo"]}>
+    # ```
     def self.parse(query : String) : self
       parsed = {} of String => Array(String)
       parse(query) do |key, value|
@@ -20,14 +22,17 @@ module HTTP
 
     # Parses an HTTP query and yields each key-value pair
     #
-    #     HTTP::Params.parse(query) do |key, value|
-    #       # ...
-    #     end
+    # ```
+    # query = "foo=bar&foo=baz&qux=zoo"
+    # HTTP::Params.parse(query) do |key, value|
+    #   # ...
+    # end
+    # ```
     def self.parse(query : String)
       return if query.empty?
 
       key = nil
-      buffer = MemoryIO.new
+      buffer = IO::Memory.new
 
       i = 0
       bytesize = query.bytesize
@@ -86,9 +91,9 @@ module HTTP
     #   form.add "name", "crystal"
     #   form.add "year", "2012 - today"
     # end
-    # params # => "color=black&name=crystal&year=2012%20-%20today"
+    # params # => "color=black&name=crystal&year=2012+-+today"
     # ```
-    def self.build : String
+    def self.build(&block : Builder ->) : String
       form_builder = Builder.new
       yield form_builder
       form_builder.to_s
@@ -110,6 +115,7 @@ module HTTP
     # Returns first value for specified param name.
     #
     # ```
+    # params = HTTP::Params.parse("email=john@example.org")
     # params["email"]              # => "john@example.org"
     # params["non_existent_param"] # KeyError
     # ```
@@ -148,6 +154,7 @@ module HTTP
     # Returns all values for specified param name.
     #
     # ```
+    # params.set_all("item", ["pencil", "book", "workbook"])
     # params.fetch_all("item") # => ["pencil", "book", "workbook"]
     # ```
     def fetch_all(name)
@@ -180,8 +187,8 @@ module HTTP
     # of provided block when there is no such param.
     #
     # ```
-    # params.fetch("email") { raise InvalidUser("email is missing") }    # InvalidUser "email is missing"
-    # params.fetch("non_existent_param") { "default computed value" }    # => "default computed value"
+    # params.fetch("email") { raise "email is missing" }              # raises "email is missing"
+    # params.fetch("non_existent_param") { "default computed value" } # => "default computed value"
     # ```
     def fetch(name)
       return yield unless has_key?(name)
@@ -253,6 +260,7 @@ module HTTP
     # values.
     #
     # ```
+    # params.set_all("comments", ["hello, world!", ":+1:"])
     # params.delete_all("comments") # => ["hello, world!", ":+1:"]
     # params.has_key?("comments")   # => false
     # ```
@@ -263,8 +271,10 @@ module HTTP
     # Serializes to string representation as http url encoded form
     #
     # ```
-    # params.to_s # => "item=keychain&item=keynote&email=john@example.org"
+    # params = HTTP::Params.parse("item=keychain&item=keynote&email=john@example.org")
+    # params.to_s # => "item=keychain&item=keynote&email=john%40example.org"
     # ```
+    # TODO: `to_s` should escape @ to %40 ?
     def to_s(io)
       builder = Builder.new(io)
       each do |name, value|
@@ -282,15 +292,19 @@ module HTTP
       URI.unescape_one query, bytesize, i, byte, char, buffer, true
     end
 
-    # :nodoc:
+    # HTTP params builder.
+    #
+    # Every parameter added is directly written to an IO,
+    # where keys and values are properly escaped.
     class Builder
       @io : IO
       @first : Bool
 
-      def initialize(@io = MemoryIO.new)
+      def initialize(@io = IO::Memory.new)
         @first = true
       end
 
+      # Adds a key-value pair to the params being built.
       def add(key, value)
         @io << '&' unless @first
         @first = false

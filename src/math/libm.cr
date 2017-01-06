@@ -1,6 +1,7 @@
-{% if flag?(:linux) || flag?(:freebsd) %}
+{% if flag?(:linux) || flag?(:freebsd) || flag?(:openbsd) %}
   @[Link("m")]
 {% end %}
+
 lib LibM
   # ## To be uncommented once LLVM is updated
   # LLVM binary operations

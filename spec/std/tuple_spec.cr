@@ -1,6 +1,6 @@
 require "spec"
 
-class TupleSpecObj
+private class TupleSpecObj
   getter x : Int32
 
   def initialize(@x)
@@ -117,7 +117,7 @@ describe "Tuple" do
     a = 0
     {1, 2, 3}.each do |i|
       a += i
-    end
+    end.should be_nil
     a.should eq(6)
   end
 
@@ -205,7 +205,7 @@ describe "Tuple" do
     str = ""
     {"a", "b", "c"}.reverse_each do |i|
       str += i
-    end
+    end.should be_nil
     str.should eq("cba")
   end
 

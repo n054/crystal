@@ -96,6 +96,7 @@ class Crystal::Def
     expansion.yields = yields
     expansion.location = location
     expansion.raises = raises?
+    expansion.free_vars = free_vars
     if owner = self.owner?
       expansion.owner = owner
     end
@@ -127,7 +128,7 @@ class Crystal::Def
             # a temporary variable (tmp_var) and then replace all ocurrences of that free var with typeof(tmp_var)
             # to achieve the same effect, since we can't define a type alias inside a method.
             restriction = arg.restriction
-            if restriction.is_a?(Path) && restriction.names.size == 1 && Parser.free_var_name?(restriction.names.first)
+            if restriction.is_a?(Path) && restriction.names.size == 1 && free_vars.try(&.includes?(restriction.names.first))
               restriction_name = program.new_temp_var_name
               new_body << Assign.new(Var.new(restriction_name), Var.new(arg.name))
               body = body.transform(ReplaceFreeVarTransformer.new(restriction.names.first, restriction_name))
@@ -142,7 +143,7 @@ class Crystal::Def
         splat_size.times do |i|
           tuple_args << Var.new(splat_names[i])
         end
-        tuple = TupleLiteral.new(tuple_args)
+        tuple = TupleLiteral.new(tuple_args).at(args[splat_index])
         new_body << Assign.new(Var.new(args[splat_index].name), tuple)
       end
 
@@ -155,7 +156,7 @@ class Crystal::Def
 
           named_tuple_entries << NamedTupleLiteral::Entry.new(named_arg, Var.new(named_arg))
         end
-        named_tuple = NamedTupleLiteral.new(named_tuple_entries)
+        named_tuple = NamedTupleLiteral.new(named_tuple_entries).at(double_splat)
         new_body << Assign.new(Var.new(double_splat.name), named_tuple)
       end
 
@@ -193,7 +194,7 @@ class Crystal::Def
         end
       end
 
-      call = Call.new(nil, name, new_args)
+      call = Call.new(nil, name, new_args).at(self)
       call.expansion = true
       body << call
 

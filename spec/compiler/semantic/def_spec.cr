@@ -195,14 +195,14 @@ describe "Semantic: def" do
     assert_type("
       require \"prelude\"
 
-      module MatchesLookup
+      module Foo
         def lookup_matches(x = 1)
           1
         end
       end
 
-      module DefContainer
-        include MatchesLookup
+      module Bar
+        include Foo
       end
 
       abstract class Type
@@ -212,7 +212,7 @@ describe "Semantic: def" do
       end
 
       abstract class MType < CType
-        include DefContainer
+        include Bar
       end
 
       class NonGenericMType < MType
@@ -367,7 +367,7 @@ describe "Semantic: def" do
 
   it "accesses free var of default argument (#1101)" do
     assert_type(%(
-      def foo(x, y : U = nil)
+      def foo(x, y : U = nil) forall U
         U
       end
 
@@ -387,5 +387,63 @@ describe "Semantic: def" do
       foo
       foo("")
       )) { int32 }
+  end
+
+  it "doesn't find type in namespace through free var" do
+    assert_error %(
+      def foo(x : T) forall T
+        T::String
+      end
+
+      foo(1)
+      ),
+      "undefined constant T::String"
+  end
+
+  it "errors if trying to declare method on generic class instance" do
+    assert_error %(
+      class Foo(T)
+      end
+
+      alias Bar = Foo(Int32)
+
+      def Bar.foo
+      end
+      ),
+      "can't define method in generic instance"
+  end
+
+  it "uses free variable" do
+    assert_type(%(
+      def foo(x : Free) forall Free
+        Free
+      end
+
+      foo(1)
+      )) { int32.metaclass }
+  end
+
+  it "uses free variable as block return type" do
+    assert_type(%(
+      def foo(&block : -> Free) forall Free
+        yield
+        Free
+      end
+
+      foo { 1 }
+      )) { int32.metaclass }
+  end
+
+  it "uses free variable and doesn't conflict with top-level type" do
+    assert_type(%(
+      class Free
+      end
+
+      def foo(x : Free) forall Free
+        Free
+      end
+
+      foo(1)
+      )) { int32.metaclass }
   end
 end

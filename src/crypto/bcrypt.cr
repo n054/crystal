@@ -33,15 +33,11 @@ class Crypto::Bcrypt
   PASSWORD_RANGE = 1..51
   SALT_SIZE      = 16
 
-  # :nodoc:
-  BLOWFISH_ROUNDS = 16
-
-  # :nodoc:
-  DIGEST_SIZE = 31
+  private BLOWFISH_ROUNDS = 16
+  private DIGEST_SIZE = 31
 
   # bcrypt IV: "OrpheanBeholderScryDoubt"
-  # :nodoc:
-  CIPHER_TEXT = Int32[
+  private CIPHER_TEXT = Int32[
     0x4f727068, 0x65616e42, 0x65686f6c,
     0x64657253, 0x63727944, 0x6f756274,
   ]
@@ -58,17 +54,17 @@ class Crypto::Bcrypt
     new(passwordb, saltb, cost)
   end
 
-  getter password : Slice(UInt8)
-  getter salt : Slice(UInt8)
+  getter password : Bytes
+  getter salt : Bytes
   getter cost : Int32
 
-  def initialize(@password : Slice(UInt8), @salt : Slice(UInt8), @cost = DEFAULT_COST)
+  def initialize(@password : Bytes, @salt : Bytes, @cost = DEFAULT_COST)
     raise Error.new("Invalid cost") unless COST_RANGE.includes?(cost)
     raise Error.new("Invalid salt size") unless salt.size == SALT_SIZE
     raise Error.new("Invalid password size") unless PASSWORD_RANGE.includes?(password.size)
   end
 
-  @digest : Slice(UInt8)?
+  @digest : Bytes?
 
   def digest
     @digest ||= hash_password
@@ -101,14 +97,14 @@ class Crypto::Bcrypt
     cdata = CIPHER_TEXT.dup
     size = cdata.size
 
-    0.step(4, 2) do |i|
+    0.step(to: 4, by: 2) do |i|
       64.times do
         l, r = blowfish.encrypt_pair(cdata[i], cdata[i + 1])
         cdata[i], cdata[i + 1] = l, r
       end
     end
 
-    ret = Slice(UInt8).new(size * 4)
+    ret = Bytes.new(size * 4)
     j = -1
 
     size.times do |i|

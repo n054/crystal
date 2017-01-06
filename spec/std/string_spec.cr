@@ -458,17 +458,41 @@ describe "String" do
   describe "downcase" do
     assert { "HELLO!".downcase.should eq("hello!") }
     assert { "HELLO MAN!".downcase.should eq("hello man!") }
+    assert { "ÁÉÍÓÚĀ".downcase.should eq("áéíóúā") }
+    assert { "AEIİOU".downcase(Unicode::CaseOptions::Turkic).should eq("aeıiou") }
+    assert { "ÁEÍOÚ".downcase(Unicode::CaseOptions::ASCII).should eq("ÁeÍoÚ") }
+    assert { "İ".downcase.should eq("i̇") }
   end
 
   describe "upcase" do
     assert { "hello!".upcase.should eq("HELLO!") }
     assert { "hello man!".upcase.should eq("HELLO MAN!") }
+    assert { "áéíóúā".upcase.should eq("ÁÉÍÓÚĀ") }
+    assert { "aeıiou".upcase(Unicode::CaseOptions::Turkic).should eq("AEIİOU") }
+    assert { "áeíoú".upcase(Unicode::CaseOptions::ASCII).should eq("áEíOú") }
+    assert { "aeiou".upcase(Unicode::CaseOptions::Turkic).should eq("AEİOU") }
+    assert { "baﬄe".upcase.should eq("BAFFLE") }
+    assert { "ﬀ".upcase.should eq("FF") }
   end
 
   describe "capitalize" do
     assert { "HELLO!".capitalize.should eq("Hello!") }
     assert { "HELLO MAN!".capitalize.should eq("Hello man!") }
     assert { "".capitalize.should eq("") }
+    assert { "ﬄİ".capitalize.should eq("FFLi̇") }
+    assert { "iO".capitalize(Unicode::CaseOptions::Turkic).should eq("İo") }
+  end
+
+  describe "lchomp" do
+    assert { "hello".lchomp('g').should eq("hello") }
+    assert { "hello".lchomp('h').should eq("ello") }
+    assert { "かたな".lchomp('か').should eq("たな") }
+
+    assert { "hello".lchomp("good").should eq("hello") }
+    assert { "hello".lchomp("hel").should eq("lo") }
+    assert { "かたな".lchomp("かた").should eq("な") }
+
+    assert { "\n\n\n\nhello".lchomp("").should eq("\n\n\n\nhello") }
   end
 
   describe "chomp" do
@@ -482,6 +506,7 @@ describe "String" do
     assert { "かたな\r\n".chomp.should eq("かたな") }
     assert { "hello\n\n".chomp.should eq("hello\n") }
     assert { "hello\r\n\n".chomp.should eq("hello\r\n") }
+    assert { "hello\r\n".chomp('\n').should eq("hello") }
 
     assert { "hello".chomp('a').should eq("hello") }
     assert { "hello".chomp('o').should eq("hell") }
@@ -515,6 +540,9 @@ describe "String" do
     assert { "".strip.should eq("") }
     assert { "\n".strip.should eq("") }
     assert { "\n\t  ".strip.should eq("") }
+
+    # TODO: add spec tags so this can be run with tag:slow
+    # assert { (" " * 167772160).strip.should eq("") }
   end
 
   describe "rstrip" do
@@ -536,6 +564,12 @@ describe "String" do
     assert { "".empty?.should be_true }
   end
 
+  describe "blank?" do
+    assert { " \t\n".blank?.should be_true }
+    assert { "\u{1680}\u{2029}".blank?.should be_true }
+    assert { "hello".blank?.should be_false }
+  end
+
   describe "index" do
     describe "by char" do
       assert { "foo".index('o').should eq(1) }
@@ -543,6 +577,7 @@ describe "String" do
       assert { "bar".index('r').should eq(2) }
       assert { "日本語".index('本').should eq(1) }
       assert { "bar".index('あ').should be_nil }
+      assert { "あいう_えお".index('_').should eq(3) }
 
       describe "with offset" do
         assert { "foobarbaz".index('a', 5).should eq(7) }
@@ -568,6 +603,22 @@ describe "String" do
         assert { "日本語日本語".index("本語", 2).should eq(4) }
       end
     end
+
+    describe "by regex" do
+      assert { "string 12345".index(/\d+/).should eq(7) }
+      assert { "12345".index(/\d/).should eq(0) }
+      assert { "Hello, world!".index(/\d/).should be_nil }
+      assert { "abcdef".index(/[def]/).should eq(3) }
+      assert { "日本語日本語".index(/本語/).should eq(1) }
+
+      describe "with offset" do
+        assert { "abcDef".index(/[A-Z]/).should eq(3) }
+        assert { "foobarbaz".index(/ba/, -5).should eq(6) }
+        assert { "Foo".index(/[A-Z]/, 1).should be_nil }
+        assert { "foo".index(/o/, 2).should eq(2) }
+        assert { "日本語日本語".index(/本語/, 2).should eq(4) }
+      end
+    end
   end
 
   describe "rindex" do
@@ -575,6 +626,7 @@ describe "String" do
       assert { "foobar".rindex('a').should eq(4) }
       assert { "foobar".rindex('g').should be_nil }
       assert { "日本語日本語".rindex('本').should eq(4) }
+      assert { "あいう_えお".rindex('_').should eq(3) }
 
       describe "with offset" do
         assert { "faobar".rindex('a', 3).should eq(1) }
@@ -593,6 +645,74 @@ describe "String" do
         assert { "foo baro baz".rindex("fg").should be_nil }
         assert { "日本語日本語".rindex("日本", 2).should eq(0) }
       end
+    end
+
+    describe "by regex" do
+      assert { "bbbb".rindex(/b/).should eq(3) }
+      assert { "a43b53".rindex(/\d+/).should eq(4) }
+      assert { "bbbb".rindex(/\d/).should be_nil }
+
+      describe "with offset" do
+        assert { "bbbb".rindex(/b/, -3).should eq(2) }
+        assert { "bbbb".rindex(/b/, -1235).should be_nil }
+        assert { "日本語日本語".rindex(/日本/, 2).should eq(0) }
+      end
+    end
+  end
+
+  describe "partition" do
+    describe "by char" do
+      "hello".partition('h').should eq ({"", "h", "ello"})
+      "hello".partition('o').should eq ({"hell", "o", ""})
+      "hello".partition('l').should eq ({"he", "l", "lo"})
+      "hello".partition('x').should eq ({"hello", "", ""})
+    end
+
+    describe "by string" do
+      "hello".partition("h").should eq ({"", "h", "ello"})
+      "hello".partition("o").should eq ({"hell", "o", ""})
+      "hello".partition("l").should eq ({"he", "l", "lo"})
+      "hello".partition("ll").should eq ({"he", "ll", "o"})
+      "hello".partition("x").should eq ({"hello", "", ""})
+    end
+
+    describe "by regex" do
+      "hello".partition(/h/).should eq ({"", "h", "ello"})
+      "hello".partition(/o/).should eq ({"hell", "o", ""})
+      "hello".partition(/l/).should eq ({"he", "l", "lo"})
+      "hello".partition(/ll/).should eq ({"he", "ll", "o"})
+      "hello".partition(/.l/).should eq ({"h", "el", "lo"})
+      "hello".partition(/.h/).should eq ({"hello", "", ""})
+      "hello".partition(/h./).should eq ({"", "he", "llo"})
+      "hello".partition(/o./).should eq ({"hello", "", ""})
+      "hello".partition(/.o/).should eq ({"hel", "lo", ""})
+      "hello".partition(/x/).should eq ({"hello", "", ""})
+    end
+  end
+
+  describe "rpartition" do
+    describe "by char" do
+      "hello".rpartition('l').should eq ({"hel", "l", "o"})
+      "hello".rpartition('o').should eq ({"hell", "o", ""})
+      "hello".rpartition('h').should eq ({"", "h", "ello"})
+    end
+
+    describe "by string" do
+      "hello".rpartition("l").should eq ({"hel", "l", "o"})
+      "hello".rpartition("x").should eq ({"", "", "hello"})
+      "hello".rpartition("o").should eq ({"hell", "o", ""})
+      "hello".rpartition("h").should eq ({"", "h", "ello"})
+      "hello".rpartition("ll").should eq ({"he", "ll", "o"})
+      "hello".rpartition("lo").should eq ({"hel", "lo", ""})
+      "hello".rpartition("he").should eq ({"", "he", "llo"})
+    end
+
+    describe "by regex" do
+      "hello".rpartition(/.l/).should eq ({"he", "ll", "o"})
+      "hello".rpartition(/ll/).should eq ({"he", "ll", "o"})
+      "hello".rpartition(/.o/).should eq ({"hel", "lo", ""})
+      "hello".rpartition(/.e/).should eq ({"", "he", "llo"})
+      "hello".rpartition(/l./).should eq ({"hel", "lo", ""})
     end
   end
 
@@ -631,6 +751,7 @@ describe "String" do
       assert { "   foo  bar".split(' ').should eq(["", "", "", "foo", "", "bar"]) }
       assert { "   foo   bar\n\t  baz   ".split(' ').should eq(["", "", "", "foo", "", "", "bar\n\t", "", "baz", "", "", ""]) }
       assert { "   foo   bar\n\t  baz   ".split.should eq(["foo", "bar", "baz"]) }
+      assert { "   foo   bar\n\t  baz   ".split(1).should eq(["   foo   bar\n\t  baz   "]) }
       assert { "   foo   bar\n\t  baz   ".split(2).should eq(["foo", "bar\n\t  baz   "]) }
       assert { "   foo   bar\n\t  baz   ".split(" ").should eq(["", "", "", "foo", "", "", "bar\n\t", "", "baz", "", "", ""]) }
       assert { "foo,bar,baz,qux".split(',', 1).should eq(["foo,bar,baz,qux"]) }
@@ -685,6 +806,7 @@ describe "String" do
       assert { "a=".split(/\=/).should eq(["a", ""]) }
       assert { "=b".split(/\=/).should eq(["", "b"]) }
       assert { "=".split(/\=/, 2).should eq(["", ""]) }
+      assert { ",".split(/(?:(x)|(,))/).should eq(["", ",", ""]) }
 
       it "keeps groups" do
         s = "split on the word on okay?"
@@ -713,6 +835,7 @@ describe "String" do
     assert { "foobar".ends_with?('x').should be_false }
     assert { "よし".ends_with?('し').should be_true }
     assert { "よし".ends_with?('な').should be_false }
+    assert { "あいう_".ends_with?('_').should be_true }
   end
 
   describe "=~" do
@@ -765,6 +888,13 @@ describe "String" do
     reversed.bytesize.should eq(15)
     reversed.size.should eq(5)
     reversed.should eq("はちいんこ")
+  end
+
+  it "reverses taking grapheme clusters into account" do
+    reversed = "noël".reverse
+    reversed.bytesize.should eq("noël".bytesize)
+    reversed.size.should eq("noël".size)
+    reversed.should eq("lëon")
   end
 
   describe "sub" do
@@ -845,6 +975,10 @@ describe "String" do
       "fここ bここr bここここz".sub("ここ", "そこ").should eq("fそこ bここr bここここz")
     end
 
+    it "subs with string and string (#3258)" do
+      "私は日本人です".sub("日本", "スペイン").should eq("私はスペイン人です")
+    end
+
     it "subs with string and block" do
       result = "foo boo".sub("oo") { |value|
         value.should eq("oo")
@@ -865,6 +999,12 @@ describe "String" do
       str = "hello"
       str.sub(/(he|l|o)/, {"he" => "ha", "l" => "la"}).should eq("hallo")
       str.sub(/(he|l|o)/, {"l" => "la"}).should be(str)
+    end
+
+    it "subs with regex and named tuple" do
+      str = "hello"
+      str.sub(/(he|l|o)/, {he: "ha", l: "la"}).should eq("hallo")
+      str.sub(/(he|l|o)/, {l: "la"}).should be(str)
     end
 
     it "subs using $~" do
@@ -1069,9 +1209,19 @@ describe "String" do
       str.gsub({'e' => 'a', 'l' => 'd'}).should eq("haddo")
     end
 
+    it "gsubs with char named tuple" do
+      str = "hello"
+      str.gsub({e: 'a', l: 'd'}).should eq("haddo")
+    end
+
     it "gsubs with regex and hash" do
       str = "hello"
       str.gsub(/(he|l|o)/, {"he" => "ha", "l" => "la"}).should eq("halala")
+    end
+
+    it "gsubs with regex and named tuple" do
+      str = "hello"
+      str.gsub(/(he|l|o)/, {he: "ha", l: "la"}).should eq("halala")
     end
 
     it "gsubs using $~" do
@@ -1265,6 +1415,7 @@ describe "String" do
     ("%20s" % 'a').should eq("                   a")
     ("%-20s" % 'a').should eq("a                   ")
     ("%*s" % [10, 123]).should eq("       123")
+    ("%*s" % [-10, 123]).should eq("123       ")
     ("%.5s" % "foo bar baz").should eq("foo b")
     ("%.*s" % [5, "foo bar baz"]).should eq("foo b")
     ("%*.*s" % [20, 5, "foo bar baz"]).should eq("               foo b")
@@ -1391,18 +1542,26 @@ describe "String" do
     s.bytesize.should eq(3)
   end
 
-  it "tr" do
-    "bla".tr("a", "h").should eq("blh")
-    "bla".tr("a", "⊙").should eq("bl⊙")
-    "bl⊙a".tr("⊙", "a").should eq("blaa")
-    "bl⊙a".tr("⊙", "ⓧ").should eq("blⓧa")
-    "bl⊙a⊙asdfd⊙dsfsdf⊙⊙⊙".tr("a⊙", "ⓧt").should eq("bltⓧtⓧsdfdtdsfsdfttt")
-    "hello".tr("aeiou", "*").should eq("h*ll*")
-    "hello".tr("el", "ip").should eq("hippo")
-    "Lisp".tr("Lisp", "Crys").should eq("Crys")
-    "hello".tr("helo", "1212").should eq("12112")
-    "this".tr("this", "ⓧ").should eq("ⓧⓧⓧⓧ")
-    "über".tr("ü", "u").should eq("uber")
+  describe "tr" do
+    it "translates" do
+      "bla".tr("a", "h").should eq("blh")
+      "bla".tr("a", "⊙").should eq("bl⊙")
+      "bl⊙a".tr("⊙", "a").should eq("blaa")
+      "bl⊙a".tr("⊙", "ⓧ").should eq("blⓧa")
+      "bl⊙a⊙asdfd⊙dsfsdf⊙⊙⊙".tr("a⊙", "ⓧt").should eq("bltⓧtⓧsdfdtdsfsdfttt")
+      "hello".tr("aeiou", "*").should eq("h*ll*")
+      "hello".tr("el", "ip").should eq("hippo")
+      "Lisp".tr("Lisp", "Crys").should eq("Crys")
+      "hello".tr("helo", "1212").should eq("12112")
+      "this".tr("this", "ⓧ").should eq("ⓧⓧⓧⓧ")
+      "über".tr("ü", "u").should eq("uber")
+    end
+
+    context "given no replacement characters" do
+      it "acts as #delete" do
+        "foo".tr("o", "").should eq("foo".delete("o"))
+      end
+    end
   end
 
   describe "compare" do
@@ -1641,6 +1800,23 @@ describe "String" do
     sprintf("%12.2f %12.2f %6.2f %.2f" % {2.0, 3.0, 4.0, 5.0}).should eq("        2.00         3.00   4.00 5.00")
   end
 
+  it "does each_char" do
+    s = "abc"
+    i = 0
+    s.each_char do |c|
+      case i
+      when 0
+        c.should eq('a')
+      when 1
+        c.should eq('b')
+      when 2
+        c.should eq('c')
+      end
+      i += 1
+    end.should be_nil
+    i.should eq(3)
+  end
+
   it "gets each_char iterator" do
     iter = "abc".each_char
     iter.next.should eq('a')
@@ -1664,6 +1840,23 @@ describe "String" do
     "abc".each_char.cycle.first(8).join.should eq("abcabcab")
   end
 
+  it "does each_byte" do
+    s = "abc"
+    i = 0
+    s.each_byte do |b|
+      case i
+      when 0
+        b.should eq('a'.ord)
+      when 1
+        b.should eq('b'.ord)
+      when 2
+        b.should eq('c'.ord)
+      end
+      i += 1
+    end.should be_nil
+    i.should eq(3)
+  end
+
   it "gets each_byte iterator" do
     iter = "abc".each_byte
     iter.next.should eq('a'.ord)
@@ -1680,20 +1873,52 @@ describe "String" do
   end
 
   it "gets lines" do
+    "".lines.should eq([] of String)
+    "\n".lines.should eq([""] of String)
+    "\r".lines.should eq(["\r"] of String)
+    "\r\n".lines.should eq([""] of String)
     "foo".lines.should eq(["foo"])
-    "foo\nbar\nbaz\n".lines.should eq(["foo\n", "bar\n", "baz\n"])
+    "foo\n".lines.should eq(["foo"])
+    "foo\r\n".lines.should eq(["foo"])
+    "foo\nbar\r\nbaz\n".lines.should eq(["foo", "bar", "baz"])
+    "foo\nbar\r\nbaz\r\n".lines.should eq(["foo", "bar", "baz"])
+  end
+
+  it "gets lines with chomp = false" do
+    "foo".lines(chomp: false).should eq(["foo"])
+    "foo\nbar\r\nbaz\n".lines(chomp: false).should eq(["foo\n", "bar\r\n", "baz\n"])
+    "foo\nbar\r\nbaz\r\n".lines(chomp: false).should eq(["foo\n", "bar\r\n", "baz\r\n"])
   end
 
   it "gets each_line" do
     lines = [] of String
-    "foo\n\nbar\nbaz\n".each_line do |line|
+    "foo\n\nbar\r\nbaz\n".each_line do |line|
       lines << line
-    end
-    lines.should eq(["foo\n", "\n", "bar\n", "baz\n"])
+    end.should be_nil
+    lines.should eq(["foo", "", "bar", "baz"])
+  end
+
+  it "gets each_line with chomp = false" do
+    lines = [] of String
+    "foo\n\nbar\r\nbaz\r\n".each_line(chomp: false) do |line|
+      lines << line
+    end.should be_nil
+    lines.should eq(["foo\n", "\n", "bar\r\n", "baz\r\n"])
   end
 
   it "gets each_line iterator" do
-    iter = "foo\nbar\nbaz\n".each_line
+    iter = "foo\nbar\r\nbaz\r\n".each_line
+    iter.next.should eq("foo")
+    iter.next.should eq("bar")
+    iter.next.should eq("baz")
+    iter.next.should be_a(Iterator::Stop)
+
+    iter.rewind
+    iter.next.should eq("foo")
+  end
+
+  it "gets each_line iterator with chomp = false" do
+    iter = "foo\nbar\nbaz\n".each_line(chomp: false)
     iter.next.should eq("foo\n")
     iter.next.should eq("bar\n")
     iter.next.should eq("baz\n")
@@ -1707,7 +1932,7 @@ describe "String" do
     codepoints = [] of Int32
     "ab☃".each_codepoint do |codepoint|
       codepoints << codepoint
-    end
+    end.should be_nil
     codepoints.should eq [97, 98, 9731]
   end
 
@@ -1765,10 +1990,16 @@ describe "String" do
     it "substitutes one placeholder" do
       res = "change %{this}" % {"this" => "nothing"}
       res.should eq "change nothing"
+
+      res = "change %{this}" % {this: "nothing"}
+      res.should eq "change nothing"
     end
 
     it "substitutes multiple placeholder" do
       res = "change %{this} and %{more}" % {"this" => "nothing", "more" => "something"}
+      res.should eq "change nothing and something"
+
+      res = "change %{this} and %{more}" % {this: "nothing", more: "something"}
       res.should eq "change nothing and something"
     end
 
@@ -1776,10 +2007,14 @@ describe "String" do
       expect_raises KeyError do
         "change %{this}" % {"that" => "wrong key"}
       end
+
+      expect_raises KeyError do
+        "change %{this}" % {that: "wrong key"}
+      end
     end
 
-    it "raises if expecting hash but not given" do
-      expect_raises(ArgumentError, "one hash required") do
+    it "raises if expecting hash or named tuple but not given" do
+      expect_raises(ArgumentError, "one hash or named tuple required") do
         "change %{this}" % "this"
       end
     end
@@ -1793,6 +2028,9 @@ describe "String" do
     it "applies formatting to %<...> placeholder" do
       res = "change %<this>.2f" % {"this" => 23.456}
       res.should eq "change 23.46"
+
+      res = "change %<this>.2f" % {this: 23.456}
+      res.should eq "change 23.46"
     end
   end
 
@@ -1805,6 +2043,12 @@ describe "String" do
   it "raises if capacity too big on new with UInt32::MAX" do
     expect_raises(ArgumentError, "capacity too big") do
       String.new(UInt32::MAX) { {0, 0} }
+    end
+  end
+
+  it "raises if capacity too big on new with UInt32::MAX - String::HEADER_SIZE - 1" do
+    expect_raises(ArgumentError, "capacity too big") do
+      String.new(UInt32::MAX - String::HEADER_SIZE) { {0, 0} }
     end
   end
 
@@ -1888,7 +2132,7 @@ describe "String" do
     end
 
     it "decodes with skip" do
-      bytes = UInt8.slice(186, 195, 140, 202, 199)
+      bytes = Bytes[186, 195, 140, 202, 199]
       String.new(bytes, "GB2312", invalid: :skip).should eq("好是")
     end
   end
@@ -1942,6 +2186,21 @@ describe "String" do
 
     expect_raises(IndexError) do
       "foo".at(4)
+    end
+  end
+
+  it "allocates buffer of correct size when UInt8 is given to new (#3332)" do
+    String.new(255_u8) do |buffer|
+      LibGC.size(buffer).should be >= 255
+      {255, 0}
+    end
+  end
+
+  it "raises on String.new if returned bytesize is greater than capacity" do
+    expect_raises ArgumentError, "bytesize out of capacity bounds" do
+      String.new(123) do |buffer|
+        {124, 0}
+      end
     end
   end
 end

@@ -1,3 +1,5 @@
+require "./node"
+
 struct XML::Attributes
   include Enumerable(Node)
 
@@ -35,7 +37,7 @@ struct XML::Attributes
     find { |node| node.name == name }
   end
 
-  def each
+  def each : Nil
     return unless @node.element?
 
     props = self.props

@@ -91,15 +91,58 @@ describe "BigInt" do
   it "divides" do
     (10.to_big_i / 3.to_big_i).should eq(3.to_big_i)
     (10.to_big_i / 3).should eq(3.to_big_i)
-    (10.to_big_i / -3).should eq(-3.to_big_i)
     (10 / 3.to_big_i).should eq(3.to_big_i)
+  end
+
+  it "divides with negative numbers" do
+    (7.to_big_i / 2).should eq(3.to_big_i)
+    (7.to_big_i / 2.to_big_i).should eq(3.to_big_i)
+    (7.to_big_i / -2).should eq(-4.to_big_i)
+    (7.to_big_i / -2.to_big_i).should eq(-4.to_big_i)
+    (-7.to_big_i / 2).should eq(-4.to_big_i)
+    (-7.to_big_i / 2.to_big_i).should eq(-4.to_big_i)
+    (-7.to_big_i / -2).should eq(3.to_big_i)
+    (-7.to_big_i / -2.to_big_i).should eq(3.to_big_i)
+
+    (-6.to_big_i / 2).should eq(-3.to_big_i)
+    (6.to_big_i / -2).should eq(-3.to_big_i)
+    (-6.to_big_i / -2).should eq(3.to_big_i)
+  end
+
+  it "tdivs" do
+    5.to_big_i.tdiv(3).should eq(1)
+    -5.to_big_i.tdiv(3).should eq(-1)
+    5.to_big_i.tdiv(-3).should eq(-1)
+    -5.to_big_i.tdiv(-3).should eq(1)
   end
 
   it "does modulo" do
     (10.to_big_i % 3.to_big_i).should eq(1.to_big_i)
     (10.to_big_i % 3).should eq(1.to_big_i)
-    (10.to_big_i % -3).should eq(1.to_big_i)
     (10 % 3.to_big_i).should eq(1.to_big_i)
+  end
+
+  it "does modulo with negative numbers" do
+    (7.to_big_i % 2).should eq(1.to_big_i)
+    (7.to_big_i % 2.to_big_i).should eq(1.to_big_i)
+    (7.to_big_i % -2).should eq(-1.to_big_i)
+    (7.to_big_i % -2.to_big_i).should eq(-1.to_big_i)
+    (-7.to_big_i % 2).should eq(1.to_big_i)
+    (-7.to_big_i % 2.to_big_i).should eq(1.to_big_i)
+    (-7.to_big_i % -2).should eq(-1.to_big_i)
+    (-7.to_big_i % -2.to_big_i).should eq(-1.to_big_i)
+
+    (6.to_big_i % 2).should eq(0.to_big_i)
+    (6.to_big_i % -2).should eq(0.to_big_i)
+    (-6.to_big_i % 2).should eq(0.to_big_i)
+    (-6.to_big_i % -2).should eq(0.to_big_i)
+  end
+
+  it "does remainder with negative numbers" do
+    5.to_big_i.remainder(3).should eq(2)
+    -5.to_big_i.remainder(3).should eq(-2)
+    5.to_big_i.remainder(-3).should eq(2)
+    -5.to_big_i.remainder(-3).should eq(-2)
   end
 
   it "does bitwise and" do
@@ -177,6 +220,30 @@ describe "BigInt" do
     a.to_s(2).should eq(b)
     a.to_s(16).should eq(c)
     a.to_s(32).should eq(d)
+  end
+
+  it "does gcd and lcm" do
+    # 3 primes
+    a = BigInt.new("48112959837082048697")
+    b = BigInt.new("12764787846358441471")
+    c = BigInt.new("36413321723440003717")
+    abc = a * b * c
+    a_17 = a * 17
+
+    (abc * b).gcd(abc * c).should eq(abc)
+    (abc * b).lcm(abc * c).should eq(abc * b * c)
+    (abc * b).gcd(abc * c).should be_a(BigInt)
+
+    (a_17).gcd(17).should eq(17)
+    (17).gcd(a_17).should eq(17)
+    (-a_17).gcd(17).should eq(17)
+    (-17).gcd(a_17).should eq(17)
+
+    (a_17).gcd(17).should be_a(Int::Unsigned)
+    (17).gcd(a_17).should be_a(Int::Unsigned)
+
+    (a_17).lcm(17).should eq(a_17)
+    (17).lcm(a_17).should eq(a_17)
   end
 
   it "can use Number::[]" do

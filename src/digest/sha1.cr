@@ -5,22 +5,21 @@ module Digest::SHA1
     digest(string.to_slice)
   end
 
-  def self.digest(slice : Slice(UInt8))
+  def self.digest(slice : Bytes)
     context = Context.new
     context.input(slice)
     context.result
   end
 
-  def self.hexdigest(string_or_slice : String | Slice(UInt8)) : String
+  def self.hexdigest(string_or_slice : String | Bytes) : String
     digest(string_or_slice).to_slice.hexstring
   end
 
-  def self.base64digest(string_or_slice : String | Slice(UInt8)) : String
+  def self.base64digest(string_or_slice : String | Bytes) : String
     Base64.strict_encode(digest(string_or_slice).to_slice)
   end
 
-  # :nodoc:
-  struct Context
+  private struct Context
     # This is a direct translation of https://tools.ietf.org/html/rfc3174#section-7
     # but we use loop unrolling for faster execution (about 1.07x slower than OpenSSL::SHA1).
 
@@ -38,7 +37,7 @@ module Digest::SHA1
       @intermediate_hash[4] = 0xC3D2E1F0_u32
     end
 
-    def input(message_array : Slice(UInt8))
+    def input(message_array : Bytes)
       message_array.each do |byte|
         @message_block[@message_block_index] = byte & 0xFF_u8
         @message_block_index += 1
